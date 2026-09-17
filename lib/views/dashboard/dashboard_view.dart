@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:furry_friends_admin/views/pets/pet_management_view.dart';
 import 'package:intl/intl.dart';
 
 class DashboardView extends StatefulWidget {
@@ -360,7 +361,7 @@ class _DashboardViewState extends State<DashboardView> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Good Morning, Admin Team! 🐾',
+                                      'Good Morning, Admin Team!',
                                       style: TextStyle(
                                         color: Colors.white,
                                         fontSize: 22,
@@ -617,6 +618,20 @@ class _DashboardViewState extends State<DashboardView> {
             setState(() {
               _selectedIndex = index;
             });
+
+            // Dito natin kinokonekta ang routing kapag pinindot ang sidebar item
+            if (index == 0) {
+              // Mananatili sa Dashboard
+            } else if (index == 1) {
+              // Lilipat sa Pet Management View
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PetManagementView(),
+                ),
+              );
+            }
+            // Maaari mo ring lagyan ng iba pang routes dito para sa Appointments, Notifications, atbp.
           },
           borderRadius: BorderRadius.circular(12),
           child: Stack(
@@ -680,9 +695,7 @@ class _DashboardViewState extends State<DashboardView> {
                   child: Container(
                     width: 4,
                     decoration: BoxDecoration(
-                      color: const Color(
-                        0xFF60A5FA,
-                      ), // Soft blue neon glow accent para sa bagong theme
+                      color: const Color(0xFF60A5FA),
                       borderRadius: BorderRadius.circular(4),
                       boxShadow: [
                         BoxShadow(
