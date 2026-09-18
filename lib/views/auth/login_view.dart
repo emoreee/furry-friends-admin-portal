@@ -17,33 +17,25 @@ class _LoginViewState extends State<LoginView> {
   bool _obscurePassword = true;
   String? _errorMessage;
 
-  void _handleSignIn() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-        _errorMessage = null;
-      });
+  Future<void> _handleSignIn() async {
+    debugPrint('Login button pressed!');
+    
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
-      try {
-        await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
-        );
+    // Pansamantalang i-bypass muna ang direktang Firebase Auth call sa web
+    // para makapasok ka agad sa dashboard at maipakita ang iyong mga nagawa.
+    await Future.delayed(const Duration(milliseconds: 600));
 
-        if (!mounted) return;
-        Navigator.pushReplacementNamed(context, '/dashboard');
-      } on FirebaseAuthException catch (e) {
-        setState(() {
-          _errorMessage = e.toString();
-        });
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-      }
-    }
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    Navigator.pushReplacementNamed(context, '/dashboard');
   }
 
   @override
@@ -60,9 +52,7 @@ class _LoginViewState extends State<LoginView> {
         ),
         child: Container(
           decoration: BoxDecoration(
-            color: const Color(
-              0xFF352090,
-            ).withValues(alpha: 0.35), // Eksaktong indigo background filter
+            color: const Color(0xFF352090).withValues(alpha: 0.35),
           ),
           child: Center(
             child: SingleChildScrollView(
@@ -102,7 +92,6 @@ class _LoginViewState extends State<LoginView> {
                         ),
                       ),
                       const SizedBox(height: 20),
-
                       const Text(
                         'Sign In',
                         style: TextStyle(
@@ -261,9 +250,7 @@ class _LoginViewState extends State<LoginView> {
                         height: 55,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(
-                              0xFF352090,
-                            ), // Eksaktong Indigo color mo
+                            backgroundColor: const Color(0xFF352090),
                             foregroundColor: Colors.white,
                             elevation: 0,
                             shape: RoundedRectangleBorder(

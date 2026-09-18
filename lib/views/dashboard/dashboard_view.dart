@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:furry_friends_admin/views/pets/pet_management_view.dart';
 import 'package:intl/intl.dart';
 
 class DashboardView extends StatefulWidget {
@@ -26,13 +25,13 @@ class _DashboardViewState extends State<DashboardView> {
     Color activeAccentColor;
     Color activeSoftBgColor;
     if (_selectedCardIndex == 0) {
-      activeAccentColor = const Color(0xFF059669); // Emerald Green
+      activeAccentColor = const Color(0xFF059669);
       activeSoftBgColor = const Color(0xFFECFDF5);
     } else if (_selectedCardIndex == 1) {
-      activeAccentColor = const Color(0xFF0EA5E9); // Blue
+      activeAccentColor = const Color(0xFF0EA5E9);
       activeSoftBgColor = const Color(0xFFF0F9FF);
     } else {
-      activeAccentColor = const Color(0xFFEF4444); // Red
+      activeAccentColor = const Color(0xFFEF4444);
       activeSoftBgColor = const Color(0xFFFEF2F2);
     }
 
@@ -40,7 +39,6 @@ class _DashboardViewState extends State<DashboardView> {
       backgroundColor: const Color(0xFFF8FAFC),
       body: Row(
         children: [
-          // Sidebar na may bagong #173F81 Navy Blue color
           MouseRegion(
             onEnter: (_) => setState(() => _isExpanded = true),
             onExit: (_) => setState(() => _isExpanded = false),
@@ -50,7 +48,7 @@ class _DashboardViewState extends State<DashboardView> {
               width: _isExpanded ? 260 : 84,
               clipBehavior: Clip.hardEdge,
               decoration: const BoxDecoration(
-                color: Color(0xFF173F81), // Bagong Navy Blue Hex Color
+                color: Color(0xFF173F81),
                 boxShadow: [
                   BoxShadow(
                     color: Color(0x1A000000),
@@ -62,7 +60,6 @@ class _DashboardViewState extends State<DashboardView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Logo & Title Header (Clean Centered Layout)
                   Padding(
                     padding: const EdgeInsets.symmetric(
                       vertical: 26,
@@ -132,7 +129,6 @@ class _DashboardViewState extends State<DashboardView> {
                   ),
                   const SizedBox(height: 12),
 
-                  // Navigation Items
                   _buildNavItem(0, Icons.dashboard_rounded, 'Dashboard'),
                   _buildNavItem(1, Icons.pets_rounded, 'Pet Management'),
                   _buildNavItem(
@@ -150,7 +146,6 @@ class _DashboardViewState extends State<DashboardView> {
 
                   const Spacer(),
 
-                  // Refined Soft Log Out Button
                   Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Material(
@@ -211,12 +206,9 @@ class _DashboardViewState extends State<DashboardView> {
               ),
             ),
           ),
-
-          // Main Content Area
           Expanded(
             child: Column(
               children: [
-                // Top Search & Profile Bar
                 Container(
                   height: 75,
                   padding: const EdgeInsets.symmetric(horizontal: 30),
@@ -321,15 +313,12 @@ class _DashboardViewState extends State<DashboardView> {
                     ],
                   ),
                 ),
-
-                // Dashboard Body Content
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(28.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Welcome Gradient Banner na naka-match sa bagong sidebar blue
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(28),
@@ -406,8 +395,6 @@ class _DashboardViewState extends State<DashboardView> {
                           ),
                         ),
                         const SizedBox(height: 16),
-
-                        // 3 Premium Overview Cards
                         Row(
                           children: [
                             Expanded(
@@ -448,8 +435,6 @@ class _DashboardViewState extends State<DashboardView> {
                           ],
                         ),
                         const SizedBox(height: 28),
-
-                        // Dynamic Section Container
                         Container(
                           width: double.infinity,
                           decoration: BoxDecoration(
@@ -619,19 +604,14 @@ class _DashboardViewState extends State<DashboardView> {
               _selectedIndex = index;
             });
 
-            // Dito natin kinokonekta ang routing kapag pinindot ang sidebar item
+            // Ligtas at malinis na routing:
             if (index == 0) {
-              // Mananatili sa Dashboard
+              Navigator.pushReplacementNamed(context, '/dashboard');
             } else if (index == 1) {
-              // Lilipat sa Pet Management View
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const PetManagementView(),
-                ),
-              );
+              Navigator.pushReplacementNamed(context, '/pets');
+            } else if (index == 2) {
+              Navigator.pushReplacementNamed(context, '/appointments');
             }
-            // Maaari mo ring lagyan ng iba pang routes dito para sa Appointments, Notifications, atbp.
           },
           borderRadius: BorderRadius.circular(12),
           child: Stack(

@@ -61,7 +61,6 @@ class _PetManagementViewState extends State<PetManagementView> {
     },
   ];
 
-  // Show Pet Profile Dialog (EMR Layout)
   void _showPetProfileDialog(Map<String, String> pet) {
     bool isActive = pet['status'] == 'Active';
 
@@ -390,7 +389,6 @@ class _PetManagementViewState extends State<PetManagementView> {
                         child: OutlinedButton.icon(
                           onPressed: () {
                             Navigator.pop(context);
-                            _showMedicalHistoryDialog(pet);
                           },
                           icon: const Icon(
                             Icons.medical_services_rounded,
@@ -580,578 +578,6 @@ class _PetManagementViewState extends State<PetManagementView> {
     );
   }
 
-  // View Medical History Dialog
-  void _showMedicalHistoryDialog(Map<String, String> pet) {
-    bool isActive = pet['status'] == 'Active';
-    String logFilter = 'All';
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return Dialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
-              ),
-              elevation: 0,
-              backgroundColor: Colors.transparent,
-              child: Container(
-                width: 780,
-                height: 650,
-                padding: const EdgeInsets.all(32),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.15),
-                      blurRadius: 35,
-                      offset: const Offset(0, 15),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: const Color(
-                                  0xFF173F81,
-                                ).withValues(alpha: 0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.medical_services_rounded,
-                                color: Color(0xFF173F81),
-                                size: 26,
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      '${pet['name']}\'s Medical History',
-                                      style: const TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF1E293B),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 3,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: isActive
-                                            ? const Color(0xFFECFDF5)
-                                            : const Color(0xFFFEF2F2),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      child: Text(
-                                        isActive
-                                            ? 'Active Patient'
-                                            : 'Deceased',
-                                        style: TextStyle(
-                                          color: isActive
-                                              ? const Color(0xFF059669)
-                                              : const Color(0xFFEF4444),
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'ID: ${pet['id']}  •  ${pet['breed']}  •  ${pet['gender']}  •  ${pet['age'] ?? 'Adult'}',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFF64748B),
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        IconButton(
-                          icon: const Icon(
-                            Icons.close_rounded,
-                            color: Color(0xFF94A3B8),
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    const Divider(color: Color(0xFFE2E8F0), height: 1),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        const Text(
-                          'FILTER LOGS:',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF64748B),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        _buildLogFilterChip(
-                          'All',
-                          logFilter,
-                          (val) => setDialogState(() => logFilter = val),
-                        ),
-                        const SizedBox(width: 8),
-                        _buildLogFilterChip(
-                          'Vaccinations',
-                          logFilter,
-                          (val) => setDialogState(() => logFilter = val),
-                        ),
-                        const SizedBox(width: 8),
-                        _buildLogFilterChip(
-                          'Consultations',
-                          logFilter,
-                          (val) => setDialogState(() => logFilter = val),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        child: Column(
-                          children: [
-                            if (logFilter == 'All' ||
-                                logFilter == 'Vaccinations')
-                              _buildMedicalRecordCard(
-                                title:
-                                    'Annual Vaccination & Comprehensive Wellness Exam',
-                                category: 'Routine Care',
-                                date: 'Aug. 24, 2026',
-                                doctorName: 'Dr. Sarah Jenkins, DVM',
-                                doctorRole: 'Lead Veterinary Physician',
-                                vitals: {
-                                  'Weight': '18.4 kg',
-                                  'Temp': '38.6 °C',
-                                  'HR': '96 bpm',
-                                  'RR': '24 rpm',
-                                },
-                                findings:
-                                    'Patient presented bright, alert, and responsive (BAR). Mucous membranes pink with CRT < 2s. Auscultation of heart and lungs normal without murmurs or wheezing. Abdominal palpation soft and non tender. Eyes clear; mild ceruminous debris in right ear pinna cleared with antiseptic flush.',
-                                treatments: [
-                                  {
-                                    'name': 'Rabies (Nobivac 3-yr)',
-                                    'desc':
-                                        '1.0 mL SubQ administered (Rt Hind)',
-                                  },
-                                  {
-                                    'name': 'DHPP 5-in-1 Booster',
-                                    'desc':
-                                        '1.0 mL SubQ administered (Lt Shoulder)',
-                                  },
-                                  {
-                                    'name': 'NexGard Spectra (15-30kg)',
-                                    'desc': '1 chew monthly oral preventative',
-                                  },
-                                ],
-                                nextDue:
-                                    'Next Due: August 2027 (Annual Core Booster)',
-                              ),
-                            if (logFilter == 'All' ||
-                                logFilter == 'Vaccinations')
-                              const SizedBox(height: 16),
-                            if (logFilter == 'All' ||
-                                logFilter == 'Consultations')
-                              _buildMedicalRecordCard(
-                                title:
-                                    'Dermatology & Skin Allergy Consultation',
-                                category: 'Consultation',
-                                date: 'May 12, 2026',
-                                doctorName: 'Dr. Michael Chen, DVM',
-                                doctorRole: 'Veterinary Dermatologist',
-                                vitals: {
-                                  'Weight': '17.9 kg',
-                                  'Temp': '38.8 °C',
-                                  'HR': '104 bpm',
-                                },
-                                findings:
-                                    'Pruritus (itching score 7/10) focused on groin and ventral abdomen. Tape prep cytology revealed moderate Malassezia yeast overgrowth secondary to environmental allergy flare-up. Skin scraping negative for Demodex or Sarcoptes mites.',
-                                treatments: [
-                                  {
-                                    'name': 'Chlorhexidine 4% Medicated Bath',
-                                    'desc':
-                                        'Lather thoroughly and leave for 10 minutes before rinsing; 2x weekly for 3 weeks.',
-                                  },
-                                  {
-                                    'name': 'Apoquel 5.4 mg Tablets',
-                                    'desc':
-                                        'Give 1 tablet BID (every 12 hrs) for 5 days, then decrease to 1 tablet SID.',
-                                  },
-                                ],
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: () {},
-                          icon: const Icon(
-                            Icons.print_rounded,
-                            size: 16,
-                            color: Color(0xFF173F81),
-                          ),
-                          label: const Text(
-                            'Print Complete History',
-                            style: TextStyle(
-                              color: Color(0xFF173F81),
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Color(0xFFCBD5E1)),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                          ),
-                        ),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF173F81),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 12,
-                            ),
-                            elevation: 0,
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text(
-                            'Close History',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildLogFilterChip(
-    String label,
-    String currentFilter,
-    Function(String) onSelected,
-  ) {
-    bool isSelected = currentFilter == label;
-    return ChoiceChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (_) => onSelected(label),
-      selectedColor: const Color(0xFF173F81),
-      labelStyle: TextStyle(
-        color: isSelected ? Colors.white : const Color(0xFF64748B),
-        fontWeight: FontWeight.bold,
-        fontSize: 12,
-      ),
-      backgroundColor: const Color(0xFFF1F5F9),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      side: BorderSide.none,
-    );
-  }
-
-  Widget _buildMedicalRecordCard({
-    required String title,
-    required String category,
-    required String date,
-    required String doctorName,
-    required String doctorRole,
-    required Map<String, String> vitals,
-    required String findings,
-    required List<Map<String, String>> treatments,
-    String? nextDue,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF059669),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E293B),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF173F81).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      category,
-                      style: const TextStyle(
-                        color: Color(0xFF173F81),
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  const Icon(
-                    Icons.calendar_today_rounded,
-                    size: 14,
-                    color: Color(0xFF64748B),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    date,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF64748B),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: const Color(
-                    0xFF173F81,
-                  ).withValues(alpha: 0.1),
-                  child: Text(
-                    doctorName.split(' ')[1][0],
-                    style: const TextStyle(
-                      color: Color(0xFF173F81),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      doctorName,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                        color: Color(0xFF1E293B),
-                      ),
-                    ),
-                    Text(
-                      doctorRole,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                Wrap(
-                  spacing: 8,
-                  children: vitals.entries.map((v) {
-                    return Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '${v.key}: ${v.value}',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF334155),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            'CLINICAL FINDINGS & ASSESSMENT',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF64748B),
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            findings,
-            style: const TextStyle(
-              fontSize: 13,
-              color: Color(0xFF334155),
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            'ADMINISTERED TREATMENTS & PREVENTATIVES',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF64748B),
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 10,
-            runSpacing: 8,
-            children: treatments.map((t) {
-              return Container(
-                width: 210,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFCBD5E1)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      t['name']!,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: Color(0xFF173F81),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      t['desc']!,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-          if (nextDue != null) ...[
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEF3C7),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: const Color(0xFFF59E0B).withValues(alpha: 0.3),
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.schedule_rounded,
-                    size: 16,
-                    color: Color(0xFFD97706),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    nextDue,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF92400E),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  // Success Animation Dialog (Auto dismiss 2 secs, indigo/blue theme)
   void _showPetSuccessAnimationDialog(String petName, String petId) {
     showDialog(
       context: context,
@@ -2471,84 +1897,51 @@ class _PetManagementViewState extends State<PetManagementView> {
                                                       ),
                                                       onSelected: (value) {
                                                         if (value ==
-                                                            'medical_history') {
-                                                          _showMedicalHistoryDialog(
-                                                            pet,
-                                                          );
-                                                        } else if (value ==
                                                             'profile') {
                                                           _showPetProfileDialog(
                                                             pet,
                                                           );
                                                         }
                                                       },
-                                                      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                                                        const PopupMenuItem<
-                                                          String
-                                                        >(
-                                                          value:
-                                                              'medical_history',
-                                                          child: Row(
-                                                            children: [
-                                                              Icon(
-                                                                Icons
-                                                                    .medical_services_rounded,
-                                                                size: 18,
-                                                                color: Color(
-                                                                  0xFF059669,
-                                                                ),
-                                                              ),
-                                                              SizedBox(
-                                                                width: 10,
-                                                              ),
-                                                              Text(
-                                                                'View Medical History',
-                                                                style: TextStyle(
-                                                                  fontSize: 13,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w600,
-                                                                  color: Color(
-                                                                    0xFF1E293B,
+                                                      itemBuilder:
+                                                          (
+                                                            BuildContext
+                                                            context,
+                                                          ) => <PopupMenuEntry<String>>[
+                                                            const PopupMenuItem<
+                                                              String
+                                                            >(
+                                                              value: 'profile',
+                                                              child: Row(
+                                                                children: [
+                                                                  Icon(
+                                                                    Icons
+                                                                        .visibility_rounded,
+                                                                    size: 18,
+                                                                    color: Color(
+                                                                      0xFF173F81,
+                                                                    ),
                                                                   ),
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                        const PopupMenuItem<
-                                                          String
-                                                        >(
-                                                          value: 'profile',
-                                                          child: Row(
-                                                            children: [
-                                                              Icon(
-                                                                Icons
-                                                                    .visibility_rounded,
-                                                                size: 18,
-                                                                color: Color(
-                                                                  0xFF173F81,
-                                                                ),
-                                                              ),
-                                                              SizedBox(
-                                                                width: 10,
-                                                              ),
-                                                              Text(
-                                                                'Pet Profile',
-                                                                style: TextStyle(
-                                                                  fontSize: 13,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w600,
-                                                                  color: Color(
-                                                                    0xFF1E293B,
+                                                                  SizedBox(
+                                                                    width: 10,
                                                                   ),
-                                                                ),
+                                                                  Text(
+                                                                    'Pet Profile',
+                                                                    style: TextStyle(
+                                                                      fontSize:
+                                                                          13,
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w600,
+                                                                      color: Color(
+                                                                        0xFF1E293B,
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ],
                                                               ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ],
+                                                            ),
+                                                          ],
                                                     ),
                                                   ],
                                                 ),
@@ -2646,6 +2039,8 @@ class _PetManagementViewState extends State<PetManagementView> {
               Navigator.pushReplacementNamed(context, '/dashboard');
             } else if (index == 1) {
               Navigator.pushReplacementNamed(context, '/pets');
+            } else if (index == 2) {
+              Navigator.pushReplacementNamed(context, '/appointments');
             }
           },
           borderRadius: BorderRadius.circular(12),
