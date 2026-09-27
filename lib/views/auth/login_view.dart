@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+// Import the Doctor Dashboard directly
+import '../dashboard/doctor_dashboard.dart';
 
 class LoginView extends StatefulWidget {
   const LoginView({super.key});
@@ -17,25 +21,113 @@ class _LoginViewState extends State<LoginView> {
   bool _obscurePassword = true;
   String? _errorMessage;
 
+  // Role selection state: 'staff' or 'doctor'
+  String _selectedRole = 'staff';
+
   Future<void> _handleSignIn() async {
-    debugPrint('Login button pressed!');
-    
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
-    // Pansamantalang i-bypass muna ang direktang Firebase Auth call sa web
-    // para makapasok ka agad sa dashboard at maipakita ang iyong mga nagawa.
-    await Future.delayed(const Duration(milliseconds: 600));
+    try {
+      final email = _emailController.text.trim();
+      final password = _passwordController.text.trim();
 
-    if (!mounted) return;
+      // 1. Firebase Authentication
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
 
-    setState(() {
-      _isLoading = false;
-    });
+      // 2. Role Validation (Authorization Check)
+      bool isAuthorized = false;
 
-    Navigator.pushReplacementNamed(context, '/dashboard');
+      // Logic A: Quick Validation base sa Email format
+      if (_selectedRole == 'doctor' && email.contains('.doctor@')) {
+        isAuthorized = true;
+      } else if (_selectedRole == 'staff' &&
+          (email.contains('.admin@') || email.contains('admin'))) {
+        isAuthorized = true;
+      }
+
+      // Logic B: Firestore Database Validation
+      final userQuery = await FirebaseFirestore.instance
+          .collection('users')
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+
+      if (userQuery.docs.isNotEmpty) {
+        final userData = userQuery.docs.first.data();
+        final userRole = (userData['role'] ?? '').toString().toLowerCase();
+
+        if (_selectedRole == 'doctor' && userRole == 'doctor') {
+          isAuthorized = true;
+        } else if (_selectedRole == 'staff' &&
+            (userRole == 'admin' || userRole == 'staff')) {
+          isAuthorized = true;
+        } else {
+          isAuthorized = false;
+        }
+      }
+
+      // 3. Reject at i-logout ang user kung hindi tugma ang role
+      if (!isAuthorized) {
+        await FirebaseAuth.instance.signOut();
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          _errorMessage = _selectedRole == 'doctor'
+              ? 'Access Denied: Ang account na ito ay hindi pang-Doctor.'
+              : 'Access Denied: Ang account na ito ay hindi pang-Admin/Staff.';
+        });
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+
+      // 4. UPDATED ROUTING: Direktang pag-route sa Main Dashboard
+      if (_selectedRole == 'doctor') {
+        Navigator.pushReplacement(
+          context,
+          PageRouteBuilder(
+            pageBuilder: (context, anim1, anim2) =>
+                const DoctorDashboardScreen(),
+            transitionDuration: Duration.zero,
+          ),
+        );
+      } else {
+        Navigator.pushReplacementNamed(
+          context,
+          '/dashboard',
+        ); // Pupunta sa Admin's Portal
+      }
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        if (e.code == 'user-not-found' || e.code == 'invalid-email') {
+          _errorMessage = 'Walang nahanap na account para sa email na ito.';
+        } else if (e.code == 'wrong-password' ||
+            e.code == 'invalid-credential') {
+          _errorMessage = 'Mali ang email o password. Subukan muli.';
+        } else {
+          _errorMessage = 'Authentication error: ${e.message}';
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'May nangyaring hindi inaasahang error.';
+      });
+    }
   }
 
   @override
@@ -79,16 +171,21 @@ class _LoginViewState extends State<LoginView> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF352090).withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.pets,
-                          size: 36,
-                          color: Color(0xFF352090),
+                      // Mas malaking logo nang walang circular background border
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.asset(
+                          'assets/images/furryFriendsLogo.png',
+                          width: 64,
+                          height: 64,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            return const Icon(
+                              Icons.pets,
+                              size: 54,
+                              color: Color(0xFF352090),
+                            );
+                          },
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -111,7 +208,79 @@ class _LoginViewState extends State<LoginView> {
                           height: 1.5,
                         ),
                       ),
-                      const SizedBox(height: 32),
+                      const SizedBox(height: 28),
+
+                      // Role Selection Switcher
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () =>
+                                    setState(() => _selectedRole = 'staff'),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: _selectedRole == 'staff'
+                                        ? const Color(0xFF352090)
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    'Clinic Staff',
+                                    style: TextStyle(
+                                      color: _selectedRole == 'staff'
+                                          ? Colors.white
+                                          : const Color(0xFF64748B),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () =>
+                                    setState(() => _selectedRole = 'doctor'),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: _selectedRole == 'doctor'
+                                        ? const Color(0xFF352090)
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    'Doctor',
+                                    style: TextStyle(
+                                      color: _selectedRole == 'doctor'
+                                          ? Colors.white
+                                          : const Color(0xFF64748B),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
 
                       if (_errorMessage != null) ...[
                         Container(
@@ -267,10 +436,12 @@ class _LoginViewState extends State<LoginView> {
                                     strokeWidth: 3,
                                   ),
                                 )
-                              : const Text(
-                                  'Get Started',
-                                  style: TextStyle(
-                                    fontSize: 16,
+                              : Text(
+                                  _selectedRole == 'doctor'
+                                      ? 'Log In as Doctor'
+                                      : 'Log In as Clinic Staff',
+                                  style: const TextStyle(
+                                    fontSize: 15,
                                     fontWeight: FontWeight.bold,
                                     letterSpacing: 0.5,
                                   ),

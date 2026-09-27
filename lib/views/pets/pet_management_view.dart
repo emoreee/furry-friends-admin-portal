@@ -1,5 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:rxdart/rxdart.dart';
+import 'package:furry_friends_admin/widgets/sidebar_widget.dart';
+
+const List<String> _monthsList = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
 
 class PetManagementView extends StatefulWidget {
   const PetManagementView({super.key});
@@ -9,432 +27,371 @@ class PetManagementView extends StatefulWidget {
 }
 
 class _PetManagementViewState extends State<PetManagementView> {
-  int _selectedIndex = 1;
-  bool _isExpanded = false;
-  String _selectedFilter = 'All';
+  String _selectedSpeciesFilter = 'All';
   String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
 
-  final List<Map<String, String>> _pets = [
-    {
-      'id': 'PET-00001',
-      'name': 'Bella',
-      'breed': 'Golden Retriever',
-      'owner': 'Maria Santos',
-      'ownerId': 'OWN-0001',
-      'gender': 'Female (Spayed)',
-      'age': '3 yrs 4 mos',
-      'colors': 'Golden with light cream chest',
-      'status': 'Active',
-    },
-    {
-      'id': 'PET-00002',
-      'name': 'Sky',
-      'breed': 'Husky',
-      'owner': 'Jerome Polo',
-      'ownerId': 'OWN-0002',
-      'gender': 'Male',
-      'age': '2 yrs 1 mo',
-      'colors': 'Gray and white with blue eyes',
-      'status': 'Active',
-    },
-    {
-      'id': 'PET-00003',
-      'name': 'Muning',
-      'breed': 'Puspin',
-      'owner': 'Ana Reyes',
-      'ownerId': 'OWN-0003',
-      'gender': 'Female',
-      'age': '4 yrs',
-      'colors': 'Orange tabby with white paws',
-      'status': 'Deceased',
-    },
-    {
-      'id': 'PET-00004',
-      'name': 'Max',
-      'breed': 'German Shepherd',
-      'owner': 'Carlos Gomez',
-      'ownerId': 'OWN-0004',
-      'gender': 'Male',
-      'age': '5 yrs',
-      'colors': 'Black and tan',
-      'status': 'Active',
-    },
-  ];
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
-  void _showPetProfileDialog(Map<String, String> pet) {
-    bool isActive = pet['status'] == 'Active';
+  String _calculateAge(String dobStr) {
+    try {
+      if (dobStr.isEmpty) return 'Unknown';
+      final parts = dobStr.split(' ');
+      if (parts.length != 2) return dobStr;
 
-    showDialog(
+      final month = _monthsList.indexOf(parts[0]) + 1;
+      final year = int.parse(parts[1]);
+      final now = DateTime.now();
+
+      int totalMonths = (now.year - year) * 12 + now.month - month;
+      if (totalMonths < 0) totalMonths = 0;
+
+      if (totalMonths >= 12) {
+        int yrs = totalMonths ~/ 12;
+        int mos = totalMonths % 12;
+        return mos > 0 ? '$yrs yrs $mos mos' : '$yrs yrs';
+      }
+      return '$totalMonths mos';
+    } catch (e) {
+      return dobStr;
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> _getPetsAndOwnersStream() {
+    final petsStream = FirebaseFirestore.instance
+        .collection('pets')
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+    final usersStream = FirebaseFirestore.instance
+        .collection('users')
+        .snapshots();
+
+    return Rx.combineLatest2(petsStream, usersStream, (
+      QuerySnapshot petsSnapshot,
+      QuerySnapshot usersSnapshot,
+    ) {
+      final usersDocs = usersSnapshot.docs;
+
+      return petsSnapshot.docs.map((doc) {
+        final petData = doc.data() as Map<String, dynamic>;
+        final ownerId = petData['ownerId'] ?? '';
+
+        String ownerName =
+            petData['fullName'] ?? petData['ownerName'] ?? 'Unknown';
+        try {
+          final userDoc = usersDocs.firstWhere((u) {
+            final uData = u.data() as Map<String, dynamic>;
+            return uData['ownerId'] == ownerId;
+          });
+          final uData = userDoc.data() as Map<String, dynamic>;
+          if (uData.containsKey('firstName') && uData.containsKey('lastName')) {
+            ownerName = '${uData['firstName']} ${uData['lastName']}';
+          } else if (uData.containsKey('fullName')) {
+            ownerName = uData['fullName'];
+          }
+        } catch (e) {}
+
+        return {
+          'docId': doc.id,
+          'id': petData['petId'] ?? 'PET-N/A',
+          'name': petData['name'] ?? 'Unknown',
+          'species': petData['animalType'] ?? petData['species'] ?? 'Unknown',
+          'breed': petData['breed'] ?? 'Unknown',
+          'owner': ownerName,
+          'ownerId': ownerId,
+          'gender': petData['gender'] ?? 'Unknown',
+          'dob': petData['dob'] ?? 'Unknown',
+          'age': _calculateAge(petData['dob'] ?? ''),
+          'colors': petData['colors'] ?? 'Not specified',
+        };
+      }).toList();
+    });
+  }
+
+  void _showAddPetSelection() {
+    showGeneralDialog<void>(
       context: context,
-      builder: (context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
+      barrierDismissible: true,
+      barrierLabel: 'Close add pet dialog',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) =>
+          _PetOwnerSelectionDialog(
+            onExistingOwner: () {
+              Navigator.of(dialogContext).pop();
+              if (!mounted) return;
+              _fetchOwnersAndShowRegistration();
+            },
+            onNewOwner: () {
+              Navigator.of(dialogContext).pop();
+              if (mounted) Navigator.of(context).pushNamed('/users');
+            },
           ),
-          elevation: 0,
-          backgroundColor: Colors.transparent,
-          child: Container(
-            width: 820,
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.15),
-                  blurRadius: 35,
-                  offset: const Offset(0, 15),
-                ),
-              ],
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curve = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+        return FadeTransition(
+          opacity: curve,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.96, end: 1).animate(curve),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _fetchOwnersAndShowRegistration() async {
+    try {
+      final usersSnap = await FirebaseFirestore.instance
+          .collection('users')
+          .get();
+      final owners = <String, String>{};
+
+      for (var doc in usersSnap.docs) {
+        final data = doc.data();
+        if (data['ownerId'] != null) {
+          String name = data['fullName'] ?? 'Unknown';
+          if (data.containsKey('firstName') && data.containsKey('lastName')) {
+            name = '${data['firstName']} ${data['lastName']}';
+          }
+          owners[data['ownerId']] = name;
+        }
+      }
+
+      if (!mounted) return;
+
+      showGeneralDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        barrierLabel: 'Close pet information dialog',
+        barrierColor: Colors.black54,
+        transitionDuration: const Duration(milliseconds: 220),
+        pageBuilder: (dialogContext, animation, secondaryAnimation) =>
+            _PetRegistrationDialog(
+              owners: owners,
+              onSuccess: () {
+                Navigator.of(dialogContext).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Pet successfully registered.'),
+                    backgroundColor: Color(0xFF059669),
+                  ),
+                );
+              },
             ),
-            child: SingleChildScrollView(
+        transitionBuilder: (context, animation, secondaryAnimation, child) {
+          final curve = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          );
+          return FadeTransition(
+            opacity: curve,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.96, end: 1).animate(curve),
+              child: child,
+            ),
+          );
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error loading owners: $e')));
+      }
+    }
+  }
+
+  void _showQuickViewDrawer(Map<String, dynamic> pet) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
+      barrierColor: Colors.black.withValues(alpha: 0.4),
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: 450,
+              height: double.infinity,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 20,
+                    offset: Offset(-5, 0),
+                  ),
+                ],
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          children: const [
-                            Icon(
-                              Icons.description_rounded,
-                              size: 14,
-                              color: Color(0xFF64748B),
-                            ),
-                            SizedBox(width: 6),
-                            Text(
-                              'Electronic Medical Record (EMR)',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF64748B),
-                              ),
-                            ),
-                          ],
-                        ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 20,
+                    ),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF8FAFC),
+                      border: Border(
+                        bottom: BorderSide(color: Color(0xFFE2E8F0)),
                       ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          color: Color(0xFF94A3B8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Patient Quick View',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
                         ),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
+                        IconButton(
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: Color(0xFF64748B),
+                          ),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Stack(
-                        children: [
-                          Container(
-                            width: 65,
-                            height: 65,
-                            decoration: BoxDecoration(
-                              color: const Color(
-                                0xFF173F81,
-                              ).withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: const Icon(
-                              Icons.pets_rounded,
-                              color: Color(0xFF173F81),
-                              size: 32,
-                            ),
-                          ),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: Container(
-                              width: 14,
-                              height: 14,
-                              decoration: BoxDecoration(
-                                color: isActive
-                                    ? const Color(0xFF059669)
-                                    : const Color(0xFFEF4444),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: Colors.white,
-                                  width: 2,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(width: 18),
-                      Column(
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: [
-                              Text(
-                                pet['name']!,
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1E293B),
-                                ),
+                              _buildPetAvatar(
+                                pet['species'],
+                                pet['name'],
+                                size: 70,
                               ),
-                              const SizedBox(width: 12),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isActive
-                                      ? const Color(0xFFECFDF5)
-                                      : const Color(0xFFFEF2F2),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  pet['status']!,
-                                  style: TextStyle(
-                                    color: isActive
-                                        ? const Color(0xFF059669)
-                                        : const Color(0xFFEF4444),
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 11,
-                                  ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      pet['name']!,
+                                      style: const TextStyle(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      pet['id']!,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF183F82),
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Text(
-                                pet['id']!,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF173F81),
-                                ),
+                          const SizedBox(height: 32),
+                          const Text(
+                            'PET SUMMARY',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF94A3B8),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildDrawerInfoRow(
+                            Icons.category_rounded,
+                            'Species & Breed',
+                            '${pet['species']} • ${pet['breed']}',
+                          ),
+                          _buildDrawerInfoRow(
+                            Icons.cake_rounded,
+                            'Age & Gender',
+                            '${pet['age']} • ${pet['gender']}',
+                          ),
+                          _buildDrawerInfoRow(
+                            Icons.palette_rounded,
+                            'Appearance',
+                            pet['colors'],
+                          ),
+                          const SizedBox(height: 24),
+                          const Text(
+                            'OWNER DETAILS',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF94A3B8),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildDrawerInfoRow(
+                            Icons.person_rounded,
+                            'Owner Name',
+                            pet['owner'],
+                          ),
+                          _buildDrawerInfoRow(
+                            Icons.badge_rounded,
+                            'Owner ID',
+                            pet['ownerId'],
+                          ),
+                          _buildDrawerInfoRow(
+                            Icons.phone_rounded,
+                            'Contact',
+                            'See user directory',
+                          ),
+                          const SizedBox(height: 32),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () {},
+                              icon: const Icon(
+                                Icons.medical_information_rounded,
+                                size: 18,
+                                color: Colors.white,
                               ),
-                              const SizedBox(width: 10),
-                              const Text(
-                                '•',
-                                style: TextStyle(color: Color(0xFF94A3B8)),
-                              ),
-                              const SizedBox(width: 10),
-                              const Text(
-                                'Chip ID: 985141001248921',
+                              label: const Text(
+                                'Open Full Medical Record',
                                 style: TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF64748B),
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            ],
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF183F82),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  const Divider(color: Color(0xFFE2E8F0), height: 1),
-                  const SizedBox(height: 24),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: const [
-                                Icon(
-                                  Icons.info_outline_rounded,
-                                  size: 16,
-                                  color: Color(0xFF173F81),
-                                ),
-                                SizedBox(width: 8),
-                                Text(
-                                  'PATIENT INFORMATION',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF173F81),
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                                Spacer(),
-                                Text(
-                                  'Species: Canine',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF64748B),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            _buildProfileCardItem(
-                              Icons.category_rounded,
-                              'Breed / Species',
-                              pet['breed']!,
-                            ),
-                            const SizedBox(height: 10),
-                            _buildProfileCardItem(
-                              Icons.transgender_rounded,
-                              'Gender',
-                              pet['gender'] ?? 'Female',
-                              badge: 'Spayed',
-                            ),
-                            const SizedBox(height: 10),
-                            _buildProfileCardItem(
-                              Icons.cake_rounded,
-                              'Age',
-                              pet['age'] ?? '3 yrs 4 mos',
-                              subtitle: 'DOB: May 12, 2023',
-                            ),
-                            const SizedBox(height: 10),
-                            _buildProfileCardItem(
-                              Icons.monitor_weight_rounded,
-                              'Current Weight',
-                              '18.4 kg',
-                              subtitle: '(40.5 lbs)',
-                            ),
-                            const SizedBox(height: 10),
-                            _buildProfileCardItem(
-                              Icons.palette_rounded,
-                              'Colors & Markings',
-                              pet['colors'] ?? 'Golden with white chest',
-                            ),
-                            const SizedBox(height: 10),
-                            _buildProfileCardItem(
-                              Icons.local_offer_rounded,
-                              'Rabies Tag ID',
-                              'TAG-2026-8842',
-                              isTag: true,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 24),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: const [
-                                Icon(
-                                  Icons.person_outline_rounded,
-                                  size: 16,
-                                  color: Color(0xFF173F81),
-                                ),
-                                SizedBox(width: 8),
-                                Text(
-                                  'OWNER & EMERGENCY DETAILS',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF173F81),
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            _buildProfileCardItem(
-                              Icons.person_rounded,
-                              'Owner Name',
-                              pet['owner']!,
-                              badge: 'Primary',
-                              isPrimary: true,
-                            ),
-                            const SizedBox(height: 10),
-                            _buildProfileCardItem(
-                              Icons.badge_rounded,
-                              'Owner ID',
-                              pet['ownerId'] ?? 'OWN-0001',
-                              isTag: true,
-                            ),
-                            const SizedBox(height: 10),
-                            _buildProfileCardItem(
-                              Icons.phone_rounded,
-                              'Primary Contact',
-                              '+1 (555) 234-8901',
-                              actionIcon: Icons.phone_callback_rounded,
-                            ),
-                            const SizedBox(height: 10),
-                            _buildProfileCardItem(
-                              Icons.email_rounded,
-                              'Email Address',
-                              'maria.santos@email.com',
-                              verified: true,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 32),
-                  const Divider(color: Color(0xFFE2E8F0), height: 1),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(context);
-                          },
-                          icon: const Icon(
-                            Icons.medical_services_rounded,
-                            size: 18,
-                            color: Color(0xFF173F81),
-                          ),
-                          label: const Text(
-                            'Medical History',
-                            style: TextStyle(
-                              color: Color(0xFF173F81),
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Color(0xFFCBD5E1)),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF173F81),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            elevation: 0,
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text(
-                            'Close Profile',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ],
               ),
@@ -442,746 +399,58 @@ class _PetManagementViewState extends State<PetManagementView> {
           ),
         );
       },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return SlideTransition(
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(
+                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+              ),
+          child: child,
+        );
+      },
     );
   }
 
-  Widget _buildProfileCardItem(
-    IconData icon,
-    String label,
-    String value, {
-    String? subtitle,
-    String? badge,
-    bool isPrimary = false,
-    bool isTag = false,
-    bool verified = false,
-    IconData? actionIcon,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
+  Widget _buildDrawerInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: const Color(0xFF173F81).withValues(alpha: 0.08),
-              shape: BoxShape.circle,
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, size: 18, color: const Color(0xFF173F81)),
+            child: Icon(icon, size: 16, color: const Color(0xFF64748B)),
           ),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF64748B),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Row(
-                children: [
-                  Text(
-                    value,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF1E293B),
-                      fontWeight: FontWeight.bold,
-                    ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF64748B),
                   ),
-                  if (subtitle != null) ...[
-                    const SizedBox(width: 6),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF94A3B8),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              if (verified) ...[
+                ),
                 const SizedBox(height: 2),
-                const Row(
-                  children: [
-                    Icon(Icons.check, size: 12, color: Color(0xFF059669)),
-                    SizedBox(width: 4),
-                    Text(
-                      'Emergency Contact Verified',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Color(0xFF059669),
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1E293B),
+                  ),
                 ),
               ],
-            ],
+            ),
           ),
-          const Spacer(),
-          if (badge != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: isPrimary
-                    ? const Color(0xFFEFF6FF)
-                    : const Color(0xFFF3E8FF),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                badge,
-                style: TextStyle(
-                  color: isPrimary
-                      ? const Color(0xFF2563EB)
-                      : const Color(0xFF9333EA),
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          if (isTag)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: const Color(0xFFECFDF5),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                value,
-                style: const TextStyle(
-                  color: Color(0xFF059669),
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          if (actionIcon != null)
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: const BoxDecoration(
-                color: Color(0xFFECFDF5),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(actionIcon, size: 16, color: const Color(0xFF059669)),
-            ),
         ],
       ),
-    );
-  }
-
-  void _showPetSuccessAnimationDialog(String petName, String petId) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        Future.delayed(const Duration(seconds: 2), () {
-          if (Navigator.canPop(context)) {
-            Navigator.pop(context);
-          }
-        });
-
-        return TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0.0, end: 1.0),
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.elasticOut,
-          builder: (context, value, child) {
-            return Transform.scale(
-              scale: value,
-              child: AlertDialog(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(28),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 40,
-                ),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Container(
-                          width: 90,
-                          height: 90,
-                          decoration: BoxDecoration(
-                            color: const Color(
-                              0xFF173F81,
-                            ).withValues(alpha: 0.1),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const Icon(
-                          Icons.pets_rounded,
-                          color: Color(0xFF173F81),
-                          size: 45,
-                        ),
-                        Positioned(
-                          top: 0,
-                          right: 10,
-                          child: Icon(
-                            Icons.star_rounded,
-                            color: Colors.blue.shade400,
-                            size: 22,
-                          ),
-                        ),
-                        Positioned(
-                          bottom: 5,
-                          left: 5,
-                          child: Icon(
-                            Icons.favorite_rounded,
-                            color: Colors.indigo.shade300,
-                            size: 18,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'Paw-fectly Saved! 🐾',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E293B),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Successfully registered $petName with ID $petId into the clinic system.',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF64748B),
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Color(0xFF173F81),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _showAddPetDialog() {
-    final TextEditingController ownerController = TextEditingController();
-    final TextEditingController petNameController = TextEditingController();
-    final TextEditingController breedController = TextEditingController();
-    final TextEditingController colorController = TextEditingController();
-
-    String autoPetId = 'PET-0000${_pets.length + 1}';
-    String autoOwnerId = 'OWN-000${_pets.length + 1}';
-    String selectedGender = 'Male';
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return Dialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
-              ),
-              elevation: 0,
-              backgroundColor: Colors.transparent,
-              child: Container(
-                width: 600,
-                padding: const EdgeInsets.all(32),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.15),
-                      blurRadius: 30,
-                      offset: const Offset(0, 12),
-                    ),
-                  ],
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: const Color(
-                                    0xFF173F81,
-                                  ).withValues(alpha: 0.1),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.pets_rounded,
-                                  color: Color(0xFF173F81),
-                                  size: 24,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              const Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Add New Patient (Pet)',
-                                    style: TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF1E293B),
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'Fill in the complete patient and owner information below.',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Color(0xFF64748B),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.close_rounded,
-                              color: Color(0xFF94A3B8),
-                            ),
-                            onPressed: () => Navigator.pop(context),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      const Divider(color: Color(0xFFE2E8F0), height: 1),
-                      const SizedBox(height: 24),
-                      const Text(
-                        'OWNER DETAILS',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF173F81),
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            flex: 2,
-                            child: TextField(
-                              controller: ownerController,
-                              style: const TextStyle(
-                                color: Color(0xFF1E293B),
-                                fontSize: 14,
-                              ),
-                              decoration: InputDecoration(
-                                labelText: 'Owner Name',
-                                hintText: 'Enter full name',
-                                hintStyle: const TextStyle(
-                                  color: Color(0xFF94A3B8),
-                                ),
-                                floatingLabelBehavior:
-                                    FloatingLabelBehavior.always,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFCBD5E1),
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFCBD5E1),
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFF173F81),
-                                    width: 2,
-                                  ),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 18,
-                                  vertical: 18,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            flex: 1,
-                            child: TextField(
-                              readOnly: true,
-                              controller: TextEditingController(
-                                text: autoOwnerId,
-                              ),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF64748B),
-                              ),
-                              decoration: InputDecoration(
-                                labelText: 'Owner ID',
-                                floatingLabelBehavior:
-                                    FloatingLabelBehavior.always,
-                                filled: true,
-                                fillColor: const Color(0xFFF1F5F9),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFCBD5E1),
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFCBD5E1),
-                                  ),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 18,
-                                  vertical: 18,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      const Text(
-                        'PET PATIENT DETAILS',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF173F81),
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            flex: 1,
-                            child: TextField(
-                              readOnly: true,
-                              controller: TextEditingController(
-                                text: autoPetId,
-                              ),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF64748B),
-                              ),
-                              decoration: InputDecoration(
-                                labelText: 'Pet ID',
-                                floatingLabelBehavior:
-                                    FloatingLabelBehavior.always,
-                                filled: true,
-                                fillColor: const Color(0xFFF1F5F9),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFCBD5E1),
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFCBD5E1),
-                                  ),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 18,
-                                  vertical: 18,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            flex: 2,
-                            child: TextField(
-                              controller: petNameController,
-                              style: const TextStyle(
-                                color: Color(0xFF1E293B),
-                                fontSize: 14,
-                              ),
-                              decoration: InputDecoration(
-                                labelText: 'Pet Name',
-                                hintText: 'Enter pet name',
-                                hintStyle: const TextStyle(
-                                  color: Color(0xFF94A3B8),
-                                ),
-                                floatingLabelBehavior:
-                                    FloatingLabelBehavior.always,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFCBD5E1),
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFCBD5E1),
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFF173F81),
-                                    width: 2,
-                                  ),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 18,
-                                  vertical: 18,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        children: [
-                          Expanded(
-                            flex: 2,
-                            child: TextField(
-                              controller: breedController,
-                              style: const TextStyle(
-                                color: Color(0xFF1E293B),
-                                fontSize: 14,
-                              ),
-                              decoration: InputDecoration(
-                                labelText: 'Breed / Species',
-                                hintText: 'e.g. Golden Retriever, Puspin',
-                                hintStyle: const TextStyle(
-                                  color: Color(0xFF94A3B8),
-                                ),
-                                floatingLabelBehavior:
-                                    FloatingLabelBehavior.always,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFCBD5E1),
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFCBD5E1),
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFF173F81),
-                                    width: 2,
-                                  ),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 18,
-                                  vertical: 18,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            flex: 1,
-                            child: DropdownButtonFormField<String>(
-                              initialValue: selectedGender,
-                              style: const TextStyle(
-                                color: Color(0xFF1E293B),
-                                fontSize: 14,
-                              ),
-                              decoration: InputDecoration(
-                                labelText: 'Gender',
-                                floatingLabelBehavior:
-                                    FloatingLabelBehavior.always,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFCBD5E1),
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFCBD5E1),
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFF173F81),
-                                    width: 2,
-                                  ),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 18,
-                                  vertical: 18,
-                                ),
-                              ),
-                              items: ['Male', 'Female'].map((String gender) {
-                                return DropdownMenuItem(
-                                  value: gender,
-                                  child: Text(gender),
-                                );
-                              }).toList(),
-                              onChanged: (val) {
-                                setDialogState(() => selectedGender = val!);
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      TextField(
-                        controller: colorController,
-                        style: const TextStyle(
-                          color: Color(0xFF1E293B),
-                          fontSize: 14,
-                        ),
-                        decoration: InputDecoration(
-                          labelText: 'Pet Colors & Markings',
-                          hintText: 'e.g. Brown with white chest spot',
-                          hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                          floatingLabelBehavior: FloatingLabelBehavior.always,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFCBD5E1),
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFCBD5E1),
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: const BorderSide(
-                              color: Color(0xFF173F81),
-                              width: 2,
-                            ),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 18,
-                            vertical: 18,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 16,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Text(
-                              'Cancel',
-                              style: TextStyle(
-                                color: Color(0xFF64748B),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF173F81),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 28,
-                                vertical: 16,
-                              ),
-                              elevation: 0,
-                            ),
-                            onPressed: () {
-                              if (ownerController.text.isNotEmpty &&
-                                  petNameController.text.isNotEmpty) {
-                                setState(() {
-                                  _pets.add({
-                                    'id': autoPetId,
-                                    'name': petNameController.text,
-                                    'breed': breedController.text.isNotEmpty
-                                        ? breedController.text
-                                        : 'Unknown',
-                                    'owner': ownerController.text,
-                                    'ownerId': autoOwnerId,
-                                    'gender': selectedGender,
-                                    'age': '1 yr',
-                                    'colors': colorController.text.isNotEmpty
-                                        ? colorController.text
-                                        : 'None recorded',
-                                    'status': 'Active',
-                                  });
-                                });
-                                Navigator.pop(context);
-                                _showPetSuccessAnimationDialog(
-                                  petNameController.text,
-                                  autoPetId,
-                                );
-                              }
-                            },
-                            child: const Text(
-                              'Save Pet',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
     );
   }
 
@@ -1191,282 +460,98 @@ class _PetManagementViewState extends State<PetManagementView> {
       'EEEE, MMM. dd, yyyy',
     ).format(DateTime.now());
 
-    final filteredPets = _pets.where((pet) {
-      final matchesFilter =
-          _selectedFilter == 'All' || pet['status'] == _selectedFilter;
-      final matchesSearch =
-          pet['name']!.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          pet['id']!.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          pet['owner']!.toLowerCase().contains(_searchQuery.toLowerCase());
-      return matchesFilter && matchesSearch;
-    }).toList();
-
-    int totalPets = _pets.length;
-    int activePets = _pets.where((p) => p['status'] == 'Active').length;
-    int deceasedPets = _pets.where((p) => p['status'] == 'Deceased').length;
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: const Color(0xFFF4F7FB),
       body: Row(
         children: [
-          MouseRegion(
-            onEnter: (_) => setState(() => _isExpanded = true),
-            onExit: (_) => setState(() => _isExpanded = false),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeInOut,
-              width: _isExpanded ? 260 : 84,
-              clipBehavior: Clip.hardEdge,
-              decoration: const BoxDecoration(
-                color: Color(0xFF173F81),
-                boxShadow: [
-                  BoxShadow(
-                    color: Color(0x1A000000),
-                    blurRadius: 15,
-                    offset: Offset(4, 0),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 26,
-                      horizontal: 12,
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.12),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.pets,
-                            color: Color(0xFF173F81),
-                            size: 26,
-                          ),
-                        ),
-                        if (_isExpanded) ...[
-                          const SizedBox(height: 10),
-                          AnimatedOpacity(
-                            opacity: _isExpanded ? 1.0 : 0.0,
-                            duration: const Duration(milliseconds: 200),
-                            child: Column(
-                              children: const [
-                                Text(
-                                  'Smart Vet Care',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15,
-                                    letterSpacing: 0.3,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                SizedBox(height: 2),
-                                Text(
-                                  'Admin Portal',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 11,
-                                    letterSpacing: 0.2,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 18),
-                    child: Divider(color: Colors.white24, height: 1),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildNavItem(
-                    0,
-                    Icons.dashboard_rounded,
-                    'Dashboard',
-                    '/dashboard',
-                  ),
-                  _buildNavItem(
-                    1,
-                    Icons.pets_rounded,
-                    'Pet Management',
-                    '/pets',
-                  ),
-                  _buildNavItem(
-                    2,
-                    Icons.calendar_month_rounded,
-                    'Appointment Management',
-                    '/appointments',
-                  ),
-                  _buildNavItem(
-                    3,
-                    Icons.notifications_rounded,
-                    'Notification',
-                    '/notifications',
-                  ),
-                  _buildNavItem(
-                    4,
-                    Icons.person_rounded,
-                    'User Account',
-                    '/users',
-                  ),
-                  _buildNavItem(
-                    5,
-                    Icons.medical_services_rounded,
-                    'Doctor\'s Portal',
-                    '/doctors',
-                  ),
-                  const Spacer(),
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () {
-                          Navigator.pushReplacementNamed(context, '/');
-                        },
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 12,
-                            horizontal: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Colors.redAccent.withValues(alpha: 0.3),
-                              width: 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: _isExpanded
-                                ? MainAxisAlignment.start
-                                : MainAxisAlignment.center,
-                            children: [
-                              const Icon(
-                                Icons.logout_rounded,
-                                color: Color(0xFFFCA5A5),
-                                size: 18,
-                              ),
-                              if (_isExpanded) ...[
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: AnimatedOpacity(
-                                    opacity: _isExpanded ? 1.0 : 0.0,
-                                    duration: const Duration(milliseconds: 200),
-                                    child: const Text(
-                                      'Log Out',
-                                      style: TextStyle(
-                                        color: Color(0xFFFCA5A5),
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 13,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          const SidebarWidget(currentRoute: '/pets'),
           Expanded(
             child: Column(
               children: [
                 Container(
-                  height: 75,
-                  padding: const EdgeInsets.symmetric(horizontal: 30),
-                  decoration: const BoxDecoration(
+                  height: 70,
+                  padding: const EdgeInsets.symmetric(horizontal: 28),
+                  decoration: BoxDecoration(
                     color: Colors.white,
                     boxShadow: [
                       BoxShadow(
-                        color: Color(0x08000000),
+                        color: Colors.black.withValues(alpha: 0.03),
                         blurRadius: 8,
-                        offset: Offset(0, 2),
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
+                      const Spacer(),
                       Row(
                         children: [
                           const Icon(
                             Icons.calendar_today_rounded,
-                            size: 16,
+                            size: 14,
                             color: Color(0xFF64748B),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                           Text(
                             formattedDate,
                             style: const TextStyle(
-                              color: Color(0xFF64748B),
-                              fontSize: 13,
+                              color: Color(0xFF334155),
+                              fontSize: 12,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(width: 25),
+                      const SizedBox(width: 24),
                       Row(
                         children: [
-                          CircleAvatar(
-                            radius: 18,
-                            backgroundColor: const Color(
-                              0xFF173F81,
-                            ).withValues(alpha: 0.1),
-                            child: const Text(
-                              'JA',
-                              style: TextStyle(
-                                color: Color(0xFF173F81),
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: const Color(
+                                0xFF183F82,
+                              ).withValues(alpha: 0.1),
+                            ),
+                            child: ClipOval(
+                              child: Image.asset(
+                                'assets/images/juneksPic.png',
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return const Center(
+                                    child: Text(
+                                      'JA',
+                                      style: TextStyle(
+                                        color: Color(0xFF183F82),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
                             ),
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 8),
                           const Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
-                                'Junaxanne Agravante',
+                                'Junexenne Agravante',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                  color: Color(0xFF1E293B),
+                                  fontSize: 12,
+                                  color: Color(0xFF0F172A),
                                 ),
                               ),
                               Text(
-                                'Clinic Staff',
+                                'Clinic Administrator',
                                 style: TextStyle(
-                                  color: Color(0xFF10B981),
-                                  fontSize: 11,
+                                  color: Color(0xFF059669),
+                                  fontSize: 10,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -1477,485 +562,426 @@ class _PetManagementViewState extends State<PetManagementView> {
                     ],
                   ),
                 ),
+
+                // Mula dito hanggang dulo, naka-wrap sa StreamBuilder para iisang beses lang maglo-load ang UI skeleton
                 Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(28.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(28),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [
-                                Color(0xFF173F81),
-                                Color(0xFF2563EB),
-                                Color(0xFF38BDF8),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(
-                                  0xFF173F81,
-                                ).withValues(alpha: 0.2),
-                                blurRadius: 15,
-                                offset: const Offset(0, 6),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Pet Management',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 0.2,
-                                      ),
-                                    ),
-                                    SizedBox(height: 8),
-                                    Text(
-                                      'Manage registered clinic patients, monitor health records, and update patient statuses seamlessly in one unified platform.',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 13,
-                                        height: 1.4,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.15),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.pets_rounded,
-                                  color: Colors.white,
-                                  size: 36,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 28),
-                        Row(
+                  child: StreamBuilder<List<Map<String, dynamic>>>(
+                    stream: _getPetsAndOwnersStream(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError)
+                        return const Center(
+                          child: Text('Something went wrong loading pets.'),
+                        );
+                      if (snapshot.connectionState == ConnectionState.waiting)
+                        return const Center(child: CircularProgressIndicator());
+
+                      final List<Map<String, dynamic>> allPets =
+                          snapshot.data ?? [];
+
+                      // Calculate Stats Unfiltered
+                      int totalPets = allPets.length;
+                      int totalCanine = allPets.where((p) {
+                        final s = p['species'].toString().toLowerCase();
+                        return s == 'dog' || s == 'canine';
+                      }).length;
+                      int totalFeline = allPets.where((p) {
+                        final s = p['species'].toString().toLowerCase();
+                        return s == 'cat' || s == 'feline';
+                      }).length;
+                      int totalOthers = totalPets - totalCanine - totalFeline;
+
+                      // Filter specifically for the table ONLY
+                      final filteredPets = allPets.where((pet) {
+                        final speciesCat = pet['species']
+                            .toString()
+                            .toLowerCase();
+                        final isDog =
+                            speciesCat == 'dog' || speciesCat == 'canine';
+                        final isCat =
+                            speciesCat == 'cat' || speciesCat == 'feline';
+
+                        bool matchSpecies = _selectedSpeciesFilter == 'All';
+                        if (_selectedSpeciesFilter == 'Canine' && isDog)
+                          matchSpecies = true;
+                        if (_selectedSpeciesFilter == 'Feline' && isCat)
+                          matchSpecies = true;
+                        if (_selectedSpeciesFilter == 'Others' &&
+                            !isDog &&
+                            !isCat)
+                          matchSpecies = true;
+
+                        final matchSearch =
+                            pet['name']!.toLowerCase().contains(_searchQuery) ||
+                            pet['id']!.toLowerCase().contains(_searchQuery) ||
+                            pet['owner']!.toLowerCase().contains(_searchQuery);
+
+                        return matchSpecies && matchSearch;
+                      }).toList();
+
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.all(32.0),
+                        physics: const BouncingScrollPhysics(),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: _buildStatCard(
-                                'Total Patients',
-                                totalPets.toString(),
-                                Icons.pets_rounded,
-                                const Color(0xFF173F81),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(28),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFF183F82),
+                                    Color(0xFF2563EB),
+                                    Color(0xFF38BDF8),
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(
+                                      0xFF183F82,
+                                    ).withValues(alpha: 0.25),
+                                    blurRadius: 15,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ],
                               ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _buildStatCard(
-                                'Active Patients',
-                                activePets.toString(),
-                                Icons.check_circle_rounded,
-                                const Color(0xFF059669),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _buildStatCard(
-                                'Deceased Cases',
-                                deceasedPets.toString(),
-                                Icons.warning_rounded,
-                                const Color(0xFFEF4444),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.04),
-                                blurRadius: 15,
-                                offset: const Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+                              child: Row(
                                 children: [
                                   Expanded(
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFF8FAFC),
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(
-                                          color: const Color(0xFFE2E8F0),
-                                        ),
-                                      ),
-                                      child: TextField(
-                                        onChanged: (value) => setState(
-                                          () => _searchQuery = value,
-                                        ),
-                                        decoration: const InputDecoration(
-                                          icon: Icon(
-                                            Icons.search,
-                                            color: Color(0xFF94A3B8),
-                                            size: 18,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Patient & Pet Management',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 0.2,
                                           ),
-                                          hintText:
-                                              'Search Pet ID, Pet Name, or Owner...',
-                                          hintStyle: TextStyle(
-                                            color: Color(0xFF94A3B8),
-                                            fontSize: 13,
-                                          ),
-                                          border: InputBorder.none,
                                         ),
-                                      ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          'Manage registered clinic patients and monitor pet records.',
+                                          style: TextStyle(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.8,
+                                            ),
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                  const SizedBox(width: 16),
-                                  _buildFilterButton('All'),
-                                  const SizedBox(width: 8),
-                                  _buildFilterButton('Active'),
-                                  const SizedBox(width: 8),
-                                  _buildFilterButton('Deceased'),
-                                  const SizedBox(width: 16),
-                                  ElevatedButton.icon(
-                                    onPressed: _showAddPetDialog,
-                                    icon: const Icon(
-                                      Icons.add_rounded,
+                                  Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.15,
+                                      ),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.pets_rounded,
                                       color: Colors.white,
-                                      size: 20,
-                                    ),
-                                    label: const Text(
-                                      'Add Pet',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF173F81),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 20,
-                                        vertical: 16,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      elevation: 0,
+                                      size: 40,
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 24),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 12,
+                            ),
+                            const SizedBox(height: 24),
+
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildStatCard(
+                                    'Total Patients',
+                                    totalPets.toString(),
+                                    Icons.pets_rounded,
+                                    const Color(0xFF183F82),
+                                    'All',
+                                  ),
                                 ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF8FAFC),
-                                  borderRadius: BorderRadius.circular(10),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: _buildStatCard(
+                                    'Canine (Dogs)',
+                                    totalCanine.toString(),
+                                    Icons.pets_rounded,
+                                    const Color(0xFF059669),
+                                    'Canine',
+                                  ),
                                 ),
-                                child: Row(
-                                  children: const [
-                                    Expanded(
-                                      flex: 2,
-                                      child: Text(
-                                        'PET ID',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                          color: Color(0xFF64748B),
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      flex: 2,
-                                      child: Text(
-                                        'PET NAME',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                          color: Color(0xFF64748B),
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      flex: 2,
-                                      child: Text(
-                                        'BREED',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                          color: Color(0xFF64748B),
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      flex: 2,
-                                      child: Text(
-                                        'OWNER\'S NAME',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                          color: Color(0xFF64748B),
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      flex: 2,
-                                      child: Text(
-                                        'STATUS',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                          color: Color(0xFF64748B),
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(
-                                      width: 80,
-                                      child: Text(
-                                        'ACTIONS',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                          color: Color(0xFF64748B),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: _buildStatCard(
+                                    'Feline (Cats)',
+                                    totalFeline.toString(),
+                                    Icons.cruelty_free_rounded,
+                                    const Color(0xFFD97706),
+                                    'Feline',
+                                  ),
                                 ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: _buildStatCard(
+                                    'Others',
+                                    totalOthers.toString(),
+                                    Icons.bug_report_rounded,
+                                    const Color(0xFF8B5CF6),
+                                    'Others',
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+
+                            Container(
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.03),
+                                    blurRadius: 15,
+                                    offset: const Offset(0, 5),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 8),
-                              filteredPets.isEmpty
-                                  ? const Padding(
-                                      padding: EdgeInsets.symmetric(
-                                        vertical: 40,
-                                      ),
-                                      child: Center(
-                                        child: Text(
-                                          'No pets found matching your search.',
-                                          style: TextStyle(
-                                            color: Color(0xFF94A3B8),
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                      ),
-                                    )
-                                  : ListView.builder(
-                                      shrinkWrap: true,
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      itemCount: filteredPets.length,
-                                      itemBuilder: (context, index) {
-                                        final pet = filteredPets[index];
-                                        bool isActive =
-                                            pet['status'] == 'Active';
-                                        return Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 16,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            border: Border(
-                                              bottom: BorderSide(
-                                                color: const Color(0xFFF1F5F9),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.all(24.0),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          flex: 3,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFF8FAFC),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: const Color(0xFFE2E8F0),
+                                              ),
+                                            ),
+                                            child: TextField(
+                                              controller: _searchController,
+                                              onChanged: (value) => setState(
+                                                () => _searchQuery = value
+                                                    .toLowerCase(),
+                                              ),
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                              ),
+                                              decoration: const InputDecoration(
+                                                icon: Icon(
+                                                  Icons.search,
+                                                  color: Color(0xFF94A3B8),
+                                                  size: 18,
+                                                ),
+                                                hintText:
+                                                    'Search by Pet ID, Name, or Owner...',
+                                                hintStyle: TextStyle(
+                                                  color: Color(0xFF94A3B8),
+                                                  fontSize: 13,
+                                                ),
+                                                border: InputBorder.none,
                                               ),
                                             ),
                                           ),
-                                          child: Row(
-                                            children: [
-                                              Expanded(
-                                                flex: 2,
-                                                child: Text(
-                                                  pet['id']!,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.w600,
-                                                    fontSize: 13,
-                                                    color: Color(0xFF173F81),
-                                                  ),
-                                                ),
-                                              ),
-                                              Expanded(
-                                                flex: 2,
-                                                child: Text(
-                                                  pet['name']!,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 13,
-                                                    color: Color(0xFF1E293B),
-                                                  ),
-                                                ),
-                                              ),
-                                              Expanded(
-                                                flex: 2,
-                                                child: Text(
-                                                  pet['breed']!,
-                                                  style: const TextStyle(
-                                                    fontSize: 13,
-                                                    color: Color(0xFF64748B),
-                                                  ),
-                                                ),
-                                              ),
-                                              Expanded(
-                                                flex: 2,
-                                                child: Text(
-                                                  pet['owner']!,
-                                                  style: const TextStyle(
-                                                    fontSize: 13,
-                                                    color: Color(0xFF1E293B),
-                                                  ),
-                                                ),
-                                              ),
-                                              Expanded(
-                                                flex: 2,
-                                                child: Align(
-                                                  alignment:
-                                                      Alignment.centerLeft,
-                                                  child: Container(
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                          horizontal: 10,
-                                                          vertical: 4,
-                                                        ),
-                                                    decoration: BoxDecoration(
-                                                      color: isActive
-                                                          ? const Color(
-                                                              0xFFECFDF5,
-                                                            )
-                                                          : const Color(
-                                                              0xFFFEF2F2,
-                                                            ),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            20,
-                                                          ),
-                                                    ),
-                                                    child: Text(
-                                                      pet['status']!,
-                                                      style: TextStyle(
-                                                        color: isActive
-                                                            ? const Color(
-                                                                0xFF059669,
-                                                              )
-                                                            : const Color(
-                                                                0xFFEF4444,
-                                                              ),
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        fontSize: 11,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                              SizedBox(
-                                                width: 80,
-                                                child: Row(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    PopupMenuButton<String>(
-                                                      icon: const Icon(
-                                                        Icons
-                                                            .more_horiz_rounded,
-                                                        color: Color(
-                                                          0xFF64748B,
-                                                        ),
-                                                        size: 20,
-                                                      ),
-                                                      shape: RoundedRectangleBorder(
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              12,
-                                                            ),
-                                                      ),
-                                                      onSelected: (value) {
-                                                        if (value ==
-                                                            'profile') {
-                                                          _showPetProfileDialog(
-                                                            pet,
-                                                          );
-                                                        }
-                                                      },
-                                                      itemBuilder:
-                                                          (
-                                                            BuildContext
-                                                            context,
-                                                          ) => <PopupMenuEntry<String>>[
-                                                            const PopupMenuItem<
-                                                              String
-                                                            >(
-                                                              value: 'profile',
-                                                              child: Row(
-                                                                children: [
-                                                                  Icon(
-                                                                    Icons
-                                                                        .visibility_rounded,
-                                                                    size: 18,
-                                                                    color: Color(
-                                                                      0xFF173F81,
-                                                                    ),
-                                                                  ),
-                                                                  SizedBox(
-                                                                    width: 10,
-                                                                  ),
-                                                                  Text(
-                                                                    'Pet Profile',
-                                                                    style: TextStyle(
-                                                                      fontSize:
-                                                                          13,
-                                                                      fontWeight:
-                                                                          FontWeight
-                                                                              .w600,
-                                                                      color: Color(
-                                                                        0xFF1E293B,
-                                                                      ),
-                                                                    ),
-                                                                  ),
-                                                                ],
-                                                              ),
-                                                            ),
-                                                          ],
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
+                                        ),
+                                        const SizedBox(width: 16),
+                                        ElevatedButton.icon(
+                                          onPressed: _showAddPetSelection,
+                                          icon: const Icon(
+                                            Icons.add_rounded,
+                                            color: Colors.white,
+                                            size: 18,
                                           ),
-                                        );
-                                      },
+                                          label: const Text(
+                                            'Add Pet',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(
+                                              0xFF183F82,
+                                            ),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 20,
+                                              vertical: 16,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            elevation: 0,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                            ],
-                          ),
+                                  ),
+                                  const Divider(
+                                    height: 1,
+                                    color: Color(0xFFE2E8F0),
+                                  ),
+
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                      vertical: 14,
+                                    ),
+                                    color: const Color(0xFFF8FAFC),
+                                    child: Row(
+                                      children: const [
+                                        Expanded(
+                                          flex: 3,
+                                          child: Text(
+                                            'PATIENT DETAILS',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 11,
+                                              color: Color(0xFF64748B),
+                                            ),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          flex: 2,
+                                          child: Text(
+                                            'SPECIES & BREED',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 11,
+                                              color: Color(0xFF64748B),
+                                            ),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          flex: 3,
+                                          child: Text(
+                                            'OWNER DETAILS',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 11,
+                                              color: Color(0xFF64748B),
+                                            ),
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: 60,
+                                          child: Text(
+                                            'ACTIONS',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 11,
+                                              color: Color(0xFF64748B),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const Divider(
+                                    height: 1,
+                                    color: Color(0xFFE2E8F0),
+                                  ),
+
+                                  // ===============================================
+                                  // PERFECT CROSS-FADE ANIMATION FOR LIST CHANGES
+                                  // (Walang screen flash o loading)
+                                  // ===============================================
+                                  AnimatedSize(
+                                    duration: const Duration(milliseconds: 300),
+                                    curve: Curves.easeOutCubic,
+                                    alignment: Alignment.topCenter,
+                                    child: AnimatedSwitcher(
+                                      duration: const Duration(
+                                        milliseconds: 300,
+                                      ),
+                                      switchInCurve: Curves.easeOut,
+                                      switchOutCurve: Curves.easeIn,
+                                      layoutBuilder:
+                                          (currentChild, previousChildren) {
+                                            return Stack(
+                                              alignment: Alignment.topCenter,
+                                              children: <Widget>[
+                                                ...previousChildren,
+                                                if (currentChild != null)
+                                                  currentChild,
+                                              ],
+                                            );
+                                          },
+                                      child: filteredPets.isEmpty
+                                          ? Container(
+                                              key: const ValueKey(
+                                                'empty_state',
+                                              ),
+                                              padding: const EdgeInsets.all(
+                                                60.0,
+                                              ),
+                                              alignment: Alignment.center,
+                                              child: const Text(
+                                                'No pets found matching your criteria.',
+                                                style: TextStyle(
+                                                  color: Color(0xFF94A3B8),
+                                                  fontSize: 14,
+                                                ),
+                                              ),
+                                            )
+                                          : ListView.separated(
+                                              key: ValueKey(
+                                                _selectedSpeciesFilter +
+                                                    _searchQuery,
+                                              ),
+                                              shrinkWrap: true,
+                                              physics:
+                                                  const NeverScrollableScrollPhysics(),
+                                              itemCount: filteredPets.length,
+                                              separatorBuilder:
+                                                  (context, index) =>
+                                                      const Divider(
+                                                        height: 1,
+                                                        color: Color(
+                                                          0xFFF1F5F9,
+                                                        ),
+                                                      ),
+                                              itemBuilder: (context, index) {
+                                                final pet = filteredPets[index];
+                                                return _HoverablePetRow(
+                                                  pet: pet,
+                                                  onRowClick: () =>
+                                                      _showQuickViewDrawer(pet),
+                                                  avatarWidget: _buildPetAvatar(
+                                                    pet['species'],
+                                                    pet['name'],
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                 ),
               ],
@@ -1966,182 +992,829 @@ class _PetManagementViewState extends State<PetManagementView> {
     );
   }
 
+  Widget _buildPetAvatar(String species, String name, {double size = 42}) {
+    Color bgColor;
+    Color iconColor;
+    IconData icon;
+    String cleanSpecies = species.toLowerCase();
+
+    if (cleanSpecies == 'dog' || cleanSpecies == 'canine') {
+      bgColor = const Color(0xFFEFF6FF);
+      iconColor = const Color(0xFF2563EB);
+      icon = Icons.pets_rounded;
+    } else if (cleanSpecies == 'cat' || cleanSpecies == 'feline') {
+      bgColor = const Color(0xFFFEF2F2);
+      iconColor = const Color(0xFFEF4444);
+      icon = Icons.cruelty_free_rounded;
+    } else {
+      bgColor = const Color(0xFFFFFBEB);
+      iconColor = const Color(0xFFD97706);
+      icon = Icons.bug_report_rounded;
+    }
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
+      child: Center(
+        child: Icon(icon, color: iconColor, size: size * 0.5),
+      ),
+    );
+  }
+
   Widget _buildStatCard(
     String title,
     String count,
     IconData icon,
     Color color,
+    String filterValue,
   ) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+    bool isSelected = _selectedSpeciesFilter == filterValue;
+
+    return GestureDetector(
+      onTap: () {
+        if (_selectedSpeciesFilter != filterValue) {
+          setState(() {
+            _selectedSpeciesFilter = filterValue;
+          });
+        }
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withValues(alpha: 0.04) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected
+                ? color.withValues(alpha: 0.6)
+                : Colors.transparent,
+            width: isSelected ? 2 : 1,
           ),
-        ],
+          boxShadow: [
+            if (isSelected)
+              BoxShadow(
+                color: color.withValues(alpha: 0.15),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              )
+            else
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 200),
+                    style: TextStyle(
+                      color: isSelected ? color : const Color(0xFF64748B),
+                      fontSize: 13,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.w600,
+                    ),
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 200),
+                    style: TextStyle(
+                      color: isSelected ? color : const Color(0xFF0F172A),
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                    ),
+                    child: Text(count),
+                  ),
+                ],
+              ),
+            ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: isSelected ? 0.15 : 0.08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+          ],
+        ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
+    );
+  }
+}
+
+class _PetOwnerSelectionDialog extends StatelessWidget {
+  const _PetOwnerSelectionDialog({
+    required this.onExistingOwner,
+    required this.onNewOwner,
+  });
+  final VoidCallback onExistingOwner;
+  final VoidCallback onNewOwner;
+
+  @override
+  Widget build(BuildContext context) => _PetModalFrame(
+    title: 'Add New Pet Record',
+    width: 520,
+    child: Column(
+      children: [
+        _OwnerOption(
+          title: 'Existing Owner',
+          subtitle: 'Pet owner already has an account',
+          onTap: onExistingOwner,
+        ),
+        const SizedBox(height: 12),
+        _OwnerOption(
+          title: 'New Owner',
+          subtitle: 'Create a new pet owner account first',
+          onTap: onNewOwner,
+        ),
+      ],
+    ),
+  );
+}
+
+class _PetRegistrationDialog extends StatefulWidget {
+  const _PetRegistrationDialog({required this.owners, required this.onSuccess});
+  final Map<String, String> owners;
+  final VoidCallback onSuccess;
+
+  @override
+  State<_PetRegistrationDialog> createState() => _PetRegistrationDialogState();
+}
+
+class _PetRegistrationDialogState extends State<_PetRegistrationDialog> {
+  static const _blue = Color(0xFF2457A6);
+  final _formKey = GlobalKey<FormState>();
+  final _petName = TextEditingController();
+  final _breed = TextEditingController();
+  String? _ownerId;
+  String? _animal;
+  String? _gender;
+  String? _birthMonth;
+  String? _birthYear;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _petName.dispose();
+    _breed.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_saving || !(_formKey.currentState?.validate() ?? false)) return;
+
+    final now = DateTime.now();
+    final year = int.parse(_birthYear!);
+    final month = _monthsList.indexOf(_birthMonth!) + 1;
+
+    if (year == now.year && month > now.month) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Birth date cannot be in the future.'),
+          backgroundColor: Color(0xFFDC2626),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('pets')
+          .count()
+          .get();
+      final count = snapshot.count ?? 0;
+      final petId = 'PET-${(count + 1).toString().padLeft(5, '0')}';
+
+      final ownerName = widget.owners[_ownerId]!;
+
+      await FirebaseFirestore.instance.collection('pets').add({
+        'animalType': _animal,
+        'breed': _breed.text.trim(),
+        'createdAt': FieldValue.serverTimestamp(),
+        'dob': '$_birthMonth $_birthYear',
+        'fullName': ownerName,
+        'gender': _gender,
+        'name': _petName.text.trim(),
+        'ownerId': _ownerId,
+        'ownerName': ownerName,
+        'petId': petId,
+        'species': _animal,
+      });
+
+      widget.onSuccess();
+    } catch (e) {
+      setState(() => _saving = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving pet: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _field(String label, Widget input) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFF64748B),
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      const SizedBox(height: 7),
+      input,
+    ],
+  );
+
+  Widget _pair(Widget left, Widget right) => LayoutBuilder(
+    builder: (context, constraints) => constraints.maxWidth < 420
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [left, const SizedBox(height: 16), right],
+          )
+        : Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Color(0xFF64748B),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                count,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Expanded(child: left),
+              const SizedBox(width: 12),
+              Expanded(child: right),
             ],
           ),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
+  );
+
+  InputDecoration _decoration(String hint) => InputDecoration(
+    hintText: hint,
+    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(9)),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(9),
+      borderSide: const BorderSide(color: Color(0xFFD7E2F3)),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(9),
+      borderSide: const BorderSide(color: _blue, width: 1.5),
+    ),
+    errorBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(9),
+      borderSide: const BorderSide(color: Color(0xFFDC2626)),
+    ),
+    focusedErrorBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(9),
+      borderSide: const BorderSide(color: Color(0xFFDC2626), width: 1.5),
+    ),
+  );
+
+  Widget _textField(TextEditingController controller, String hint) =>
+      TextFormField(
+        controller: controller,
+        style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A)),
+        decoration: _decoration(hint),
+        validator: (value) => value == null || value.trim().isEmpty
+            ? 'This field is required'
+            : null,
+      );
+
+  Widget _dropdown({
+    required String? value,
+    required String hint,
+    required List<DropdownMenuItem<String>> items,
+    required ValueChanged<String?> onChanged,
+  }) => DropdownButtonFormField<String>(
+    value: value,
+    isExpanded: true,
+    icon: const Icon(
+      Icons.keyboard_arrow_down_rounded,
+      color: Color(0xFF64748B),
+      size: 20,
+    ),
+    decoration: _decoration(hint),
+    style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A)),
+    dropdownColor: Colors.white,
+    borderRadius: BorderRadius.circular(9),
+    items: items,
+    onChanged: onChanged,
+    validator: (value) => value == null ? 'Please select an option' : null,
+  );
+
+  List<DropdownMenuItem<String>> _items(Iterable<String> values) => values
+      .map(
+        (item) => DropdownMenuItem<String>(
+          value: item,
+          child: Text(item, overflow: TextOverflow.ellipsis),
+        ),
+      )
+      .toList();
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    return _PetModalFrame(
+      title: 'Add New Pet Information',
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _field(
+              'PET OWNER*',
+              _dropdown(
+                value: _ownerId,
+                hint: 'Select existing owner',
+                items: widget.owners.entries
+                    .map(
+                      (entry) => DropdownMenuItem<String>(
+                        value: entry.key,
+                        child: Text(
+                          '${entry.value} (${entry.key})',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) => setState(() => _ownerId = value),
+              ),
             ),
-            child: Icon(icon, color: color, size: 20),
+            const SizedBox(height: 16),
+            _pair(
+              _field('PET NAME*', _textField(_petName, 'Enter pet name')),
+              _field(
+                'TYPE OF ANIMAL*',
+                _dropdown(
+                  value: _animal,
+                  hint: 'Select animal',
+                  items: _items(const ['Dog', 'Cat', 'Bird', 'Exotic']),
+                  onChanged: (value) => setState(() => _animal = value),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _pair(
+              _field(
+                'GENDER*',
+                _dropdown(
+                  value: _gender,
+                  hint: 'Select gender',
+                  items: _items(const ['Male', 'Female', 'Unknown']),
+                  onChanged: (value) => setState(() => _gender = value),
+                ),
+              ),
+              _field(
+                'BREED / SPECIES*',
+                _textField(_breed, 'Enter breed or species'),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _field(
+              'ESTIMATED BIRTH DATE*',
+              _pair(
+                _dropdown(
+                  value: _birthMonth,
+                  hint: 'Birth month',
+                  items: _items(_monthsList),
+                  onChanged: (value) => setState(() => _birthMonth = value),
+                ),
+                _dropdown(
+                  value: _birthYear,
+                  hint: 'Birth year',
+                  items: _items(
+                    List.generate(31, (index) => (now.year - index).toString()),
+                  ),
+                  onChanged: (value) => setState(() => _birthYear = value),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      footer: Wrap(
+        alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        children: [
+          TextButton(
+            onPressed: _saving ? null : () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: _saving ? null : _submit,
+            style: ButtonStyle(
+              backgroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.disabled))
+                  return const Color(0xFF94A3B8);
+                if (states.contains(WidgetState.hovered))
+                  return const Color(0xFF174385);
+                return _blue;
+              }),
+              foregroundColor: const WidgetStatePropertyAll(Colors.white),
+              padding: const WidgetStatePropertyAll(
+                EdgeInsets.symmetric(horizontal: 22, vertical: 15),
+              ),
+              shape: WidgetStatePropertyAll(
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+              ),
+              elevation: const WidgetStatePropertyAll(0),
+            ),
+            child: _saving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text(
+                    'Save Pet Record',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildNavItem(int index, IconData icon, String title, String route) {
-    bool isSelected = _selectedIndex == index;
+class _PetModalFrame extends StatelessWidget {
+  const _PetModalFrame({
+    required this.title,
+    required this.child,
+    this.footer,
+    this.width = 560,
+  });
+  final String title;
+  final Widget child;
+  final Widget? footer;
+  final double width;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return Center(
       child: Material(
         color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            setState(() {
-              _selectedIndex = index;
-            });
-            if (index == 0) {
-              Navigator.pushReplacementNamed(context, '/dashboard');
-            } else if (index == 1) {
-              Navigator.pushReplacementNamed(context, '/pets');
-            } else if (index == 2) {
-              Navigator.pushReplacementNamed(context, '/appointments');
-            }
-          },
-          borderRadius: BorderRadius.circular(12),
-          child: Stack(
+        child: Container(
+          width: width,
+          constraints: BoxConstraints(
+            maxWidth: size.width - 32,
+            maxHeight: size.height - 32,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.16),
+                blurRadius: 32,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? Colors.white.withValues(alpha: 0.15)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                  border: isSelected
-                      ? Border.all(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          width: 1,
-                        )
-                      : null,
-                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(28, 20, 20, 18),
                 child: Row(
-                  mainAxisAlignment: _isExpanded
-                      ? MainAxisAlignment.start
-                      : MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      icon,
-                      color: isSelected ? Colors.white : Colors.white70,
-                      size: 20,
-                    ),
-                    if (_isExpanded) ...[
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: AnimatedOpacity(
-                          opacity: _isExpanded ? 1.0 : 0.0,
-                          duration: const Duration(milliseconds: 200),
-                          child: Text(
-                            title,
-                            style: TextStyle(
-                              color: isSelected ? Colors.white : Colors.white70,
-                              fontSize: 13,
-                              fontWeight: isSelected
-                                  ? FontWeight.bold
-                                  : FontWeight.w500,
-                              letterSpacing: 0.2,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F172A),
                         ),
                       ),
-                    ],
+                    ),
+                    IconButton(
+                      tooltip: 'Close',
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Color(0xFF94A3B8),
+                      ),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
                   ],
                 ),
               ),
-              if (isSelected)
-                Positioned(
-                  left: 0,
-                  top: 8,
-                  bottom: 8,
-                  child: Container(
-                    width: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF60A5FA),
-                      borderRadius: BorderRadius.circular(4),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF60A5FA).withValues(alpha: 0.6),
-                          blurRadius: 8,
-                          spreadRadius: 1,
-                        ),
-                      ],
-                    ),
-                  ),
+              const Divider(height: 1, color: Color(0xFFE2E8F0)),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(28, 22, 28, 24),
+                  child: child,
                 ),
+              ),
+              if (footer != null) ...[
+                const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 28,
+                    vertical: 16,
+                  ),
+                  child: footer,
+                ),
+              ],
             ],
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildFilterButton(String label) {
-    bool isSelected = _selectedFilter == label;
-    return OutlinedButton(
-      onPressed: () => setState(() => _selectedFilter = label),
-      style: OutlinedButton.styleFrom(
-        backgroundColor: isSelected ? const Color(0xFF173F81) : Colors.white,
-        side: BorderSide(
-          color: isSelected ? const Color(0xFF173F81) : const Color(0xFFE2E8F0),
+class _OwnerOption extends StatefulWidget {
+  const _OwnerOption({
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  State<_OwnerOption> createState() => _OwnerOptionState();
+}
+
+class _OwnerOptionState extends State<_OwnerOption> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => _hovered = true),
+    onExit: (_) => setState(() => _hovered = false),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      decoration: BoxDecoration(
+        color: _hovered ? const Color(0xFFEFF6FF) : Colors.white,
+        border: Border.all(
+          color: _hovered ? const Color(0xFF2457A6) : const Color(0xFFD7E2F3),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        borderRadius: BorderRadius.circular(10),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: isSelected ? Colors.white : const Color(0xFF64748B),
-          fontWeight: FontWeight.bold,
-          fontSize: 13,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: widget.onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.title,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.subtitle,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.arrow_forward_rounded,
+                size: 18,
+                color: Color(0xFF2457A6),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+// ===================================================================
+// HOVERABLE TABLE ROW WIDGET (With Drawer Trigger)
+// ===================================================================
+class _HoverablePetRow extends StatefulWidget {
+  final Map<String, dynamic> pet;
+  final VoidCallback onRowClick;
+  final Widget avatarWidget;
+
+  const _HoverablePetRow({
+    required this.pet,
+    required this.onRowClick,
+    required this.avatarWidget,
+  });
+
+  @override
+  State<_HoverablePetRow> createState() => _HoverablePetRowState();
+}
+
+class _HoverablePetRowState extends State<_HoverablePetRow> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onRowClick,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            color: _isHovered ? const Color(0xFFF8FAFC) : Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Row(
+                    children: [
+                      widget.avatarWidget,
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.pet['name'],
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              widget.pet['id'],
+                              style: const TextStyle(
+                                color: Color(0xFF183F82),
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.pet['species'],
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        widget.pet['breed'],
+                        style: const TextStyle(
+                          color: Color(0xFF64748B),
+                          fontSize: 11,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.pet['owner'],
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w500,
+                          fontSize: 13,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        widget.pet['ownerId'],
+                        style: const TextStyle(
+                          color: Color(0xFF64748B),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: 60,
+                  child: Center(
+                    child: PopupMenuButton<String>(
+                      icon: const Icon(
+                        Icons.more_vert_rounded,
+                        color: Color(0xFF94A3B8),
+                        size: 22,
+                      ),
+                      tooltip: 'Actions',
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 4,
+                      offset: const Offset(0, 40),
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'view',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.medical_information_outlined,
+                                size: 18,
+                                color: Color(0xFF64748B),
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Medical Records',
+                                style: TextStyle(fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.edit_outlined,
+                                size: 18,
+                                color: Color(0xFF64748B),
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Edit Details',
+                                style: TextStyle(fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'appointment',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.event_outlined,
+                                size: 18,
+                                color: Color(0xFF64748B),
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Schedule Checkup',
+                                style: TextStyle(fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      onSelected: (value) {},
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

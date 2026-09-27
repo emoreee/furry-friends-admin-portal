@@ -11,10 +11,11 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  firebase_core: ^3.0.0
-  firebase_auth: ^5.0.0
-  cloud_firestore: ^5.0.0
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  cloud_firestore: ^5.4.4
   intl: ^0.20.3
+  rxdart: ^0.28.0
 
 dev_dependencies:
   flutter_test:
@@ -26,3 +27,8 @@ flutter:
 
   assets:
     - assets/images/clinic_lab_bg.png
+    - assets/images/furryFriendsLogo.png
+    - assets/images/juneksPic.png
+    - assets/images/dr.Alfie.jpg
+    - assets/images/dr.Martinez.jpg
+    - assets/images/dr.Ck.jpg
