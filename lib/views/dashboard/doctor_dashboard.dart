@@ -398,7 +398,11 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
     return Row(
       children: [
         StreamBuilder<QuerySnapshot>(
-          stream: _db.collection('appointments').snapshots(),
+          // FILTER: Only fetch appointments for this specific doctor
+          stream: _db
+              .collection('appointments')
+              .where('doctorName', isEqualTo: _currentDoctorName)
+              .snapshots(),
           builder: (context, snapshot) {
             int activeCount = 0;
             if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
@@ -424,7 +428,11 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
         ),
         const SizedBox(width: 20),
         StreamBuilder<QuerySnapshot>(
-          stream: _db.collection('health_monitoring').snapshots(),
+          // FILTER: Only fetch health monitoring records for this specific doctor
+          stream: _db
+              .collection('health_monitoring')
+              .where('doctorName', isEqualTo: _currentDoctorName)
+              .snapshots(),
           builder: (context, snapshot) {
             int pendingLabs = 0;
             if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
@@ -450,7 +458,11 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
         ),
         const SizedBox(width: 20),
         StreamBuilder<QuerySnapshot>(
-          stream: _db.collection('appointments').snapshots(),
+          // FILTER: Only fetch urgent appointments for this specific doctor
+          stream: _db
+              .collection('appointments')
+              .where('doctorName', isEqualTo: _currentDoctorName)
+              .snapshots(),
           builder: (context, snapshot) {
             int urgentCount = 0;
             if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
@@ -837,12 +849,12 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                     _DoctorTableHeader('ACTION'),
                   ],
                 ),
-                // MOCK DATA FOR LABS
+                // MOCK DATA FOR LABS (Only showing data assigned to the logged-in doctor)
                 _buildLabRow(
                   'Bambam',
                   'Golden Retriever, Canine • ID #V-4082',
                   'Checkup Test',
-                  'Dr. Alfie Tamesis',
+                  _currentDoctorName,
                   'PENDING',
                   isWarning: true,
                 ),
@@ -850,14 +862,7 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                   'Sky',
                   'Siamese Cat, Feline • ID #V-3914',
                   'Checkup Test (Biochemical Panel)',
-                  'Dr. Alfie Tamesis',
-                  'COMPLETED',
-                ),
-                _buildLabRow(
-                  'Mosang',
-                  'French Bulldog, Canine • ID #V-4128',
-                  'Checkup Test (Routine Bloodwork)',
-                  'Dr. Vance',
+                  _currentDoctorName,
                   'COMPLETED',
                 ),
               ],
@@ -914,9 +919,12 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
             ),
           ),
 
-          // Stream Builder for Real-Time Data
+          // Stream Builder for Real-Time Data (Filtered by doctorName)
           StreamBuilder<QuerySnapshot>(
-            stream: _db.collection('appointments').snapshots(),
+            stream: _db
+                .collection('appointments')
+                .where('doctorName', isEqualTo: _currentDoctorName)
+                .snapshots(),
             builder: (context, snapshot) {
               if (!snapshot.hasData) {
                 return const Padding(
@@ -1197,12 +1205,12 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                   TextButton.icon(
                     onPressed: () {},
                     icon: const Icon(
-                      Icons.person_add_alt_1,
+                      Icons.assignment_ind_outlined,
                       size: 12,
                       color: Color(0xFFDC2626),
                     ),
                     label: const Text(
-                      'Assign ER Doctor',
+                      'View Assigned Details',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,

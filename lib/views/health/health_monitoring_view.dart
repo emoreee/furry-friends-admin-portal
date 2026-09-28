@@ -15,87 +15,25 @@ class _HealthMonitoringViewState extends State<HealthMonitoringView> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
-  // MOCK REAL-TIME DATA (Idinesenyo para madaling i-connect sa Firestore)
-  final List<Map<String, dynamic>> _monitoredPatients = [
-    {
-      'id': 'PET-2024-150',
-      'name': 'Simba',
-      'species': 'Feline',
-      'breed': 'Maine Coon',
-      'status': 'Critical / ICU',
-      'temp': 40.5, // High Fever
-      'spo2': 91, // Hypoxia
-      'bpm': 180,
-      'currentWeight': 4.8,
-      'admissionWeight': 5.2,
-      'soap': 'S: Lethargic, unresponsive. O: Temp high, breathing labored. A: Severe Trauma / Internal bleeding suspected. P: Emergency surgery prep, oxygen therapy.',
-      'ivRate': 'Lactated Ringer\'s @ 20ml/hr',
-    },
-    {
-      'id': 'PET-2024-090',
-      'name': 'Charlie',
-      'species': 'Canine',
-      'breed': 'Pug',
-      'status': 'Post-Surgery',
-      'temp': 38.5, // Normal
-      'spo2': 98, // Normal
-      'bpm': 95,
-      'currentWeight': 8.5,
-      'admissionWeight': 8.5,
-      'soap': 'S: Recovering well, responsive. O: Incision site clean. Vitals stable. A: Post-op recovery normal. P: Continue antibiotics, monitor next 12 hrs.',
-      'ivRate': '0.9% NaCl @ 15ml/hr',
-    },
-    {
-      'id': 'PET-2024-112',
-      'name': 'Luna',
-      'species': 'Feline',
-      'breed': 'Persian Cat',
-      'status': 'Discharged',
-      'temp': 38.1,
-      'spo2': 99,
-      'bpm': 110,
-      'currentWeight': 3.2,
-      'admissionWeight': 3.1,
-      'soap': 'S: Active, eating well. O: Dermatitis clearing up. A: Resolved skin infection. P: Discharged with topical cream.',
-      'ivRate': 'Discontinued',
-    },
-    {
-      'id': 'PET-2024-089',
-      'name': 'Bella',
-      'species': 'Canine',
-      'breed': 'Golden Retriever',
-      'status': 'All Active',
-      'temp': 37.2, // Mild Hypothermia
-      'spo2': 96,
-      'bpm': 75,
-      'currentWeight': 25.4,
-      'admissionWeight': 26.0,
-      'soap': 'S: Weak appetite. O: Slightly low temp. A: Mild dehydration. P: Warming blanket, increase fluid intake.',
-      'ivRate': 'Lactated Ringer\'s @ 40ml/hr',
-    },
-  ];
-
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
 
+  // Mapa ang UI Tabs papunta sa totoong Firestore Statuses
+  String _mapTabToStatus(String tab) {
+    if (tab == 'Critical / ICU') return 'URGENT';
+    if (tab == 'Post-Surgery') return 'Post-Surgery';
+    if (tab == 'Discharged') return 'Discharged';
+    return 'All Active';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final String formattedDate = DateFormat('EEEE, MMM. dd, yyyy').format(DateTime.now());
-
-    // Filter Logic
-    final filteredPatients = _monitoredPatients.where((pet) {
-      bool matchesTab = _activeTab == 'All Active'
-          ? pet['status'] != 'Discharged'
-          : pet['status'] == _activeFilterMap(_activeTab);
-      
-      bool matchesSearch = pet['name'].toLowerCase().contains(_searchQuery) ||
-                           pet['id'].toLowerCase().contains(_searchQuery);
-                           
-      return matchesTab && matchesSearch;
-    }).toList();
+    final String formattedDate = DateFormat(
+      'EEEE, MMM. dd, yyyy',
+    ).format(DateTime.now());
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7FB),
@@ -126,7 +64,11 @@ class _HealthMonitoringViewState extends State<HealthMonitoringView> {
                       const Spacer(),
                       Row(
                         children: [
-                          const Icon(Icons.calendar_today_rounded, size: 14, color: Color(0xFF64748B)),
+                          const Icon(
+                            Icons.calendar_today_rounded,
+                            size: 14,
+                            color: Color(0xFF64748B),
+                          ),
                           const SizedBox(width: 6),
                           Text(
                             formattedDate,
@@ -146,15 +88,25 @@ class _HealthMonitoringViewState extends State<HealthMonitoringView> {
                             height: 32,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: const Color(0xFF183F82).withValues(alpha: 0.1),
+                              color: const Color(
+                                0xFF183F82,
+                              ).withValues(alpha: 0.1),
                             ),
                             child: ClipOval(
                               child: Image.asset(
                                 'assets/images/juneksPic.png',
                                 fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => const Center(
-                                  child: Text('JA', style: TextStyle(color: Color(0xFF183F82), fontSize: 11, fontWeight: FontWeight.bold)),
-                                ),
+                                errorBuilder: (context, error, stackTrace) =>
+                                    const Center(
+                                      child: Text(
+                                        'JA',
+                                        style: TextStyle(
+                                          color: Color(0xFF183F82),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
                               ),
                             ),
                           ),
@@ -165,11 +117,19 @@ class _HealthMonitoringViewState extends State<HealthMonitoringView> {
                             children: [
                               Text(
                                 'Junexenne Agravante',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF1E293B)),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                  color: Color(0xFF1E293B),
+                                ),
                               ),
                               Text(
                                 'Clinic Administrator',
-                                style: TextStyle(color: Color(0xFF059669), fontSize: 10, fontWeight: FontWeight.w600),
+                                style: TextStyle(
+                                  color: Color(0xFF059669),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ],
                           ),
@@ -195,13 +155,23 @@ class _HealthMonitoringViewState extends State<HealthMonitoringView> {
                           padding: const EdgeInsets.all(28),
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
-                              colors: [Color(0xFF183F82), Color(0xFF2563EB), Color(0xFF38BDF8)],
+                              colors: [
+                                Color(0xFF183F82),
+                                Color(0xFF2563EB),
+                                Color(0xFF38BDF8),
+                              ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
-                              BoxShadow(color: const Color(0xFF183F82).withValues(alpha: 0.25), blurRadius: 15, offset: const Offset(0, 6)),
+                              BoxShadow(
+                                color: const Color(
+                                  0xFF183F82,
+                                ).withValues(alpha: 0.25),
+                                blurRadius: 15,
+                                offset: const Offset(0, 6),
+                              ),
                             ],
                           ),
                           child: Row(
@@ -212,12 +182,22 @@ class _HealthMonitoringViewState extends State<HealthMonitoringView> {
                                 children: [
                                   const Text(
                                     'Health Monitoring & ICU Vitals',
-                                    style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 0.2),
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.2,
+                                    ),
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
                                     'Real-time clinical metrics, SOAP notes, and emergency alerts for admitted patients.',
-                                    style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 14),
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.8,
+                                      ),
+                                      fontSize: 14,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -227,16 +207,18 @@ class _HealthMonitoringViewState extends State<HealthMonitoringView> {
                                   color: Colors.white.withValues(alpha: 0.15),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(Icons.monitor_heart_rounded, color: Colors.white, size: 40),
+                                child: const Icon(
+                                  Icons.monitor_heart_rounded,
+                                  color: Colors.white,
+                                  size: 40,
+                                ),
                               ),
                             ],
                           ),
                         ),
                         const SizedBox(height: 24),
 
-                        // ==========================================
                         // FILTER TABS & SEARCH BAR
-                        // ==========================================
                         Row(
                           children: [
                             Expanded(
@@ -245,18 +227,37 @@ class _HealthMonitoringViewState extends State<HealthMonitoringView> {
                                 decoration: BoxDecoration(
                                   color: Colors.white,
                                   borderRadius: BorderRadius.circular(10),
-                                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2))],
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.03,
+                                      ),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
                                 ),
                                 child: TextField(
                                   controller: _searchController,
-                                  onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
+                                  onChanged: (value) => setState(
+                                    () => _searchQuery = value.toLowerCase(),
+                                  ),
                                   style: const TextStyle(fontSize: 13),
                                   decoration: const InputDecoration(
-                                    hintText: 'Search Microchip or Pet ID...',
-                                    hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                                    prefixIcon: Icon(Icons.search_rounded, color: Color(0xFF94A3B8), size: 20),
+                                    hintText: 'Search Pet ID or Name...',
+                                    hintStyle: TextStyle(
+                                      color: Color(0xFF94A3B8),
+                                      fontSize: 13,
+                                    ),
+                                    prefixIcon: Icon(
+                                      Icons.search_rounded,
+                                      color: Color(0xFF94A3B8),
+                                      size: 20,
+                                    ),
                                     border: InputBorder.none,
-                                    contentPadding: EdgeInsets.symmetric(vertical: 14),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -280,28 +281,158 @@ class _HealthMonitoringViewState extends State<HealthMonitoringView> {
                         ),
                         const SizedBox(height: 32),
 
-                        // ==========================================
-                        // PATIENT CARDS GRID
-                        // ==========================================
-                        filteredPatients.isEmpty
-                            ? const Center(
+                        // FIRESTORE STREAM BUILDER (REAL-TIME DATA)
+                        StreamBuilder<QuerySnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('health_monitoring')
+                              .snapshots(),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(40.0),
+                                  child: CircularProgressIndicator(
+                                    color: Color(0xFF183F82),
+                                  ),
+                                ),
+                              );
+                            }
+
+                            if (!snapshot.hasData ||
+                                snapshot.data!.docs.isEmpty) {
+                              return const Center(
                                 child: Padding(
                                   padding: EdgeInsets.all(60.0),
                                   child: Text(
-                                    'No monitored patients found in this category.',
-                                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
+                                    'No monitored patients found in the database.',
+                                    style: TextStyle(
+                                      color: Color(0xFF94A3B8),
+                                      fontSize: 15,
+                                    ),
                                   ),
                                 ),
-                              )
-                            : ListView.separated(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                itemCount: filteredPatients.length,
-                                separatorBuilder: (context, index) => const SizedBox(height: 20),
-                                itemBuilder: (context, index) {
-                                  return _PatientHealthCard(patient: filteredPatients[index]);
-                                },
-                              ),
+                              );
+                            }
+
+                            final docs = snapshot.data!.docs;
+                            final List<Map<String, dynamic>> filteredPatients =
+                                [];
+
+                            for (var doc in docs) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              final statusStr =
+                                  data['status']?.toString().toUpperCase() ??
+                                  'UNKNOWN';
+
+                              bool matchesTab = true;
+                              if (_activeTab != 'All Active') {
+                                final expectedStatus = _mapTabToStatus(
+                                  _activeTab,
+                                ).toUpperCase();
+                                matchesTab = (statusStr == expectedStatus);
+                              } else {
+                                matchesTab = statusStr != 'DISCHARGED';
+                              }
+
+                              final pName =
+                                  data['petName']?.toString().toLowerCase() ??
+                                  '';
+                              final pId =
+                                  data['petId']?.toString().toLowerCase() ?? '';
+                              bool matchesSearch =
+                                  pName.contains(_searchQuery) ||
+                                  pId.contains(_searchQuery);
+
+                              if (matchesTab && matchesSearch) {
+                                final vitals =
+                                    data['vitals'] as Map<String, dynamic>? ??
+                                    {};
+
+                                filteredPatients.add({
+                                  'id': data['petId'] ?? 'N/A',
+                                  'name': data['petName'] ?? 'Unknown',
+                                  'breed': data['breed'] ?? 'Unknown',
+                                  'species':
+                                      (data['breed']
+                                              .toString()
+                                              .toLowerCase()
+                                              .contains('feline') ||
+                                          data['breed']
+                                              .toString()
+                                              .toLowerCase()
+                                              .contains('cat'))
+                                      ? 'Feline'
+                                      : 'Canine',
+                                  'status': data['status'] ?? 'Unknown',
+                                  'temp':
+                                      double.tryParse(
+                                        vitals['temperature']?.toString() ??
+                                            '0',
+                                      ) ??
+                                      0.0,
+                                  'spo2':
+                                      int.tryParse(
+                                        vitals['respiratoryRate']?.toString() ??
+                                            '0',
+                                      ) ??
+                                      98,
+                                  'bpm':
+                                      int.tryParse(
+                                        vitals['heartRate']?.toString() ?? '0',
+                                      ) ??
+                                      0,
+                                  'currentWeight':
+                                      double.tryParse(
+                                        vitals['weight']?.toString() ?? '0',
+                                      ) ??
+                                      0.0,
+                                  'admissionWeight':
+                                      double.tryParse(
+                                        vitals['weight']?.toString() ?? '0',
+                                      ) ??
+                                      0.0,
+                                  'soap':
+                                      data['chiefComplaint'] ??
+                                      'No notes available.',
+                                  'ivRate':
+                                      data['locationBay'] ?? 'General Ward',
+                                  'ownerId': data['ownerId'] ?? 'Unknown',
+                                  'doctorName':
+                                      data['doctorName'] ?? 'Unassigned',
+                                });
+                              }
+                            }
+
+                            if (filteredPatients.isEmpty) {
+                              return const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(60.0),
+                                  child: Text(
+                                    'No matching patients found in this category.',
+                                    style: TextStyle(
+                                      color: Color(0xFF94A3B8),
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+
+                            return ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: filteredPatients.length,
+                              separatorBuilder: (context, index) =>
+                                  const SizedBox(height: 20),
+                              itemBuilder: (context, index) {
+                                return _PatientHealthCard(
+                                  patient: filteredPatients[index],
+                                );
+                              },
+                            );
+                          },
+                        ),
                       ],
                     ),
                   ),
@@ -312,13 +443,6 @@ class _HealthMonitoringViewState extends State<HealthMonitoringView> {
         ],
       ),
     );
-  }
-
-  String _activeFilterMap(String tab) {
-    if (tab == 'Post-Surgery') return 'Post-Surgery';
-    if (tab == 'Critical / ICU') return 'Critical / ICU';
-    if (tab == 'Discharged') return 'Discharged';
-    return 'All Active';
   }
 
   Widget _buildTab(String label) {
@@ -334,8 +458,20 @@ class _HealthMonitoringViewState extends State<HealthMonitoringView> {
           decoration: BoxDecoration(
             color: isSelected ? const Color(0xFF183F82) : Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: isSelected ? const Color(0xFF183F82) : const Color(0xFFCBD5E1)),
-            boxShadow: isSelected ? [BoxShadow(color: const Color(0xFF183F82).withValues(alpha: 0.2), blurRadius: 8, offset: const Offset(0, 4))] : [],
+            border: Border.all(
+              color: isSelected
+                  ? const Color(0xFF183F82)
+                  : const Color(0xFFCBD5E1),
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF183F82).withValues(alpha: 0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : [],
           ),
           child: Text(
             label,
@@ -359,18 +495,407 @@ class _PatientHealthCard extends StatelessWidget {
 
   const _PatientHealthCard({required this.patient});
 
+  // ==========================================
+  // COMPLETE MEDICAL HISTORY MODAL
+  // ==========================================
+  void _showMedicalHistoryDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          backgroundColor: Colors.white,
+          insetPadding: const EdgeInsets.all(40),
+          child: Container(
+            width: 900,
+            height: 700,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(24)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // HEADER
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 24,
+                  ),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF8FAFC),
+                    border: Border(
+                      bottom: BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(
+                                0xFF183F82,
+                              ).withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.history_edu_rounded,
+                              color: Color(0xFF183F82),
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${patient['name']}\'s Medical History',
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'ID: ${patient['id']}  •  ${patient['breed']}',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: Color(0xFF64748B),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // BODY CONTENT
+                Expanded(
+                  child: Row(
+                    children: [
+                      // LEFT SIDE: PROFILE SUMMARY
+                      Container(
+                        width: 300,
+                        padding: const EdgeInsets.all(32),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                            right: BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'PATIENT SUMMARY',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF94A3B8),
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            _buildSummaryItem(
+                              Icons.pets,
+                              'Species',
+                              patient['species'],
+                            ),
+                            const SizedBox(height: 16),
+                            _buildSummaryItem(
+                              Icons.monitor_weight_outlined,
+                              'Current Weight',
+                              '${patient['currentWeight']} kg',
+                            ),
+                            const SizedBox(height: 16),
+                            _buildSummaryItem(
+                              Icons.medical_services_outlined,
+                              'Attending Vet',
+                              patient['doctorName'],
+                            ),
+                            const SizedBox(height: 16),
+                            _buildSummaryItem(
+                              Icons.person_outline,
+                              'Owner ID',
+                              patient['ownerId'],
+                            ),
+                            const SizedBox(height: 32),
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEF2F2),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: const Color(0xFFFCA5A5),
+                                ),
+                              ),
+                              child: const Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.warning_amber_rounded,
+                                        color: Color(0xFFDC2626),
+                                        size: 16,
+                                      ),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Known Allergies',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFFDC2626),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    '• Penicillin\n• Certain beef proteins',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF991B1B),
+                                      height: 1.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // RIGHT SIDE: MEDICAL TIMELINE
+                      Expanded(
+                        child: Container(
+                          color: const Color(0xFFF8FAFC).withValues(alpha: 0.5),
+                          child: ListView(
+                            padding: const EdgeInsets.all(32),
+                            physics: const BouncingScrollPhysics(),
+                            children: [
+                              const Text(
+                                'CLINICAL TIMELINE',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF94A3B8),
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+
+                              // Real Data: Current Admission
+                              _buildTimelineItem(
+                                date: 'Today (Current)',
+                                title: 'Admitted: ${patient['status']}',
+                                doctor: patient['doctorName'],
+                                icon: Icons.local_hospital_rounded,
+                                iconColor: const Color(0xFFEF4444),
+                                content: patient['soap'],
+                              ),
+                              const SizedBox(height: 24),
+
+                              // Mock Data 1: Past Checkup
+                              _buildTimelineItem(
+                                date: 'August 12, 2026',
+                                title: 'Routine Checkup & Grooming',
+                                doctor: 'Dr. Alfie Tamesis',
+                                icon: Icons.health_and_safety_rounded,
+                                iconColor: const Color(0xFF059669),
+                                content:
+                                    'Patient presented in good health. Minor tartar buildup observed. Recommended dental cleaning on next visit. Nails trimmed and ears cleaned.',
+                              ),
+                              const SizedBox(height: 24),
+
+                              // Mock Data 2: Vaccination
+                              _buildTimelineItem(
+                                date: 'January 15, 2026',
+                                title: 'Annual Core Vaccinations',
+                                doctor: 'Dr. Martinez',
+                                icon: Icons.vaccines_rounded,
+                                iconColor: const Color(0xFF2563EB),
+                                content:
+                                    'Administered Rabies 3-Yr (Imrab) and DHPP 5-in-1. Patient exhibited normal response. Next due date: Jan 2027.',
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSummaryItem(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: const Color(0xFF94A3B8)),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1E293B),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTimelineItem({
+    required String date,
+    required String title,
+    required String doctor,
+    required IconData icon,
+    required Color iconColor,
+    required String content,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: iconColor, size: 20),
+            ),
+            const SizedBox(height: 8),
+            Container(width: 2, height: 80, color: const Color(0xFFE2E8F0)),
+          ],
+        ),
+        const SizedBox(width: 20),
+        Expanded(
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        date,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF64748B),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Attending: $doctor',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Divider(color: Color(0xFFF1F5F9)),
+                const SizedBox(height: 12),
+                Text(
+                  content,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF334155),
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Threshold Analytics
     double temp = patient['temp'];
     int spo2 = patient['spo2'];
-    
-    // Status Colors
+
+    // Status Colors based on database values
     Color statusColor;
-    if (patient['status'] == 'Critical / ICU') statusColor = const Color(0xFFEF4444);
-    else if (patient['status'] == 'Post-Surgery') statusColor = const Color(0xFFD97706);
-    else if (patient['status'] == 'Discharged') statusColor = const Color(0xFF64748B);
-    else statusColor = const Color(0xFF059669);
+    String rawStatus = patient['status'].toString().toUpperCase();
+
+    if (rawStatus == 'URGENT' || rawStatus == 'CRITICAL / ICU') {
+      statusColor = const Color(0xFFEF4444);
+    } else if (rawStatus == 'POST-SURGERY') {
+      statusColor = const Color(0xFFD97706);
+    } else if (rawStatus == 'DISCHARGED') {
+      statusColor = const Color(0xFF64748B);
+    } else {
+      statusColor = const Color(0xFF059669);
+    }
 
     return Container(
       decoration: BoxDecoration(
@@ -405,7 +930,13 @@ class _PatientHealthCard extends StatelessWidget {
                         color: statusColor.withValues(alpha: 0.1),
                         shape: BoxShape.circle,
                       ),
-                      child: Icon(patient['species'] == 'Feline' ? Icons.cruelty_free : Icons.pets, color: statusColor, size: 20),
+                      child: Icon(
+                        patient['species'] == 'Feline'
+                            ? Icons.cruelty_free
+                            : Icons.pets,
+                        color: statusColor,
+                        size: 20,
+                      ),
                     ),
                     const SizedBox(width: 16),
                     Column(
@@ -415,19 +946,33 @@ class _PatientHealthCard extends StatelessWidget {
                           children: [
                             Text(
                               patient['name'],
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0F172A),
+                              ),
                             ),
                             const SizedBox(width: 10),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: statusColor.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+                                border: Border.all(
+                                  color: statusColor.withValues(alpha: 0.3),
+                                ),
                               ),
                               child: Text(
-                                patient['status'].toUpperCase(),
-                                style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                                patient['status'].toString().toUpperCase(),
+                                style: TextStyle(
+                                  color: statusColor,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                ),
                               ),
                             ),
                           ],
@@ -435,21 +980,37 @@ class _PatientHealthCard extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           '${patient['id']} • ${patient['breed']}',
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ],
                     ),
                   ],
                 ),
-                
+
                 // Quick Actions Top Right
                 Row(
                   children: [
-                    _buildIconButton(Icons.add_chart_rounded, 'Log Vitals', const Color(0xFF2563EB)),
+                    _buildIconButton(
+                      Icons.add_chart_rounded,
+                      'Log Vitals',
+                      const Color(0xFF2563EB),
+                    ),
                     const SizedBox(width: 8),
-                    _buildIconButton(Icons.science_outlined, 'Labs', const Color(0xFF059669)),
+                    _buildIconButton(
+                      Icons.science_outlined,
+                      'Labs',
+                      const Color(0xFF059669),
+                    ),
                     const SizedBox(width: 8),
-                    _buildIconButton(Icons.warning_amber_rounded, 'Alert', const Color(0xFFEF4444)),
+                    _buildIconButton(
+                      Icons.warning_amber_rounded,
+                      'Alert',
+                      const Color(0xFFEF4444),
+                    ),
                   ],
                 ),
               ],
@@ -468,27 +1029,66 @@ class _PatientHealthCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('REAL-TIME VITALS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8), letterSpacing: 0.8)),
+                      const Text(
+                        'REAL-TIME VITALS',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF94A3B8),
+                          letterSpacing: 0.8,
+                        ),
+                      ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildVitalBox('Temperature', '${temp.toStringAsFixed(1)}°C', _getTempStatus(temp), Icons.thermostat)),
+                          Expanded(
+                            child: _buildVitalBox(
+                              'Temperature',
+                              '${temp.toStringAsFixed(1)}°C',
+                              _getTempStatus(temp),
+                              Icons.thermostat,
+                            ),
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildVitalBox('SpO2 (Oxygen)', '$spo2%', _getSpo2Status(spo2), Icons.air)),
+                          Expanded(
+                            child: _buildVitalBox(
+                              'Resp. Rate',
+                              '$spo2 bpm',
+                              _getSpo2Status(spo2),
+                              Icons.air,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildVitalBox('Heart Rate', '${patient['bpm']} bpm', 'Normal', Icons.favorite_rounded)),
+                          Expanded(
+                            child: _buildVitalBox(
+                              'Heart Rate',
+                              '${patient['bpm']} bpm',
+                              'Normal',
+                              Icons.favorite_rounded,
+                            ),
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildVitalBox('Weight Track', '${patient['currentWeight']} kg', _getWeightTrend(patient['currentWeight'], patient['admissionWeight']), Icons.scale_rounded)),
+                          Expanded(
+                            child: _buildVitalBox(
+                              'Weight Track',
+                              '${patient['currentWeight']} kg',
+                              _getWeightTrend(
+                                patient['currentWeight'],
+                                patient['admissionWeight'],
+                              ),
+                              Icons.scale_rounded,
+                            ),
+                          ),
                         ],
                       ),
                     ],
                   ),
                 ),
-                
+
                 // DIVIDER
                 Container(
                   width: 1,
@@ -506,11 +1106,26 @@ class _PatientHealthCard extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('CLINICAL STATUS & SOAP', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8), letterSpacing: 0.8)),
+                          const Text(
+                            'CLINICAL STATUS & COMPLAINT',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF94A3B8),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
                           InkWell(
-                            onTap: (){},
-                            child: const Text('Edit Notes', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF2563EB))),
-                          )
+                            onTap: () {},
+                            child: const Text(
+                              'Edit Notes',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF2563EB),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
@@ -524,42 +1139,69 @@ class _PatientHealthCard extends StatelessWidget {
                         ),
                         child: Text(
                           patient['soap'],
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF334155), height: 1.5),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF334155),
+                            height: 1.5,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          const Icon(Icons.water_drop_rounded, size: 14, color: Color(0xFF0EA5E9)),
+                          const Icon(
+                            Icons.location_on_rounded,
+                            size: 14,
+                            color: Color(0xFF0EA5E9),
+                          ),
                           const SizedBox(width: 6),
                           Text(
-                            'IV Drip: ${patient['ivRate']}',
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0284C7)),
+                            'Location: ${patient['ivRate']}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF0284C7),
+                            ),
                           ),
                         ],
-                      )
+                      ),
                     ],
                   ),
                 ),
               ],
             ),
           ),
-          
+
           // CARD FOOTER
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             decoration: const BoxDecoration(
               color: Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(20),
+                bottomRight: Radius.circular(20),
+              ),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Last updated: Just now', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                const Text(
+                  'Live Data from Database',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                ),
                 TextButton(
-                  onPressed: () {},
-                  child: const Text('View Complete Medical History →', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF183F82))),
-                )
+                  onPressed: () => _showMedicalHistoryDialog(
+                    context,
+                  ), // <--- DITO KINABIT ANG MODAL
+                  child: const Text(
+                    'View Complete Medical History →',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF183F82),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -576,22 +1218,34 @@ class _PatientHealthCard extends StatelessWidget {
   }
 
   String _getSpo2Status(int spo2) {
-    if (spo2 < 95) return 'Low (Hypoxia)';
+    if (spo2 < 20 || spo2 > 60)
+      return 'Abnormal'; // Adjust based on pet normal resp rate
     return 'Normal';
   }
 
   String _getWeightTrend(double current, double admission) {
-    if (current < admission) return 'Dropped (-${(admission - current).toStringAsFixed(1)}kg)';
-    if (current > admission) return 'Gained (+${(current - admission).toStringAsFixed(1)}kg)';
+    if (current < admission) {
+      return 'Dropped (-${(admission - current).toStringAsFixed(1)}kg)';
+    }
+    if (current > admission) {
+      return 'Gained (+${(current - admission).toStringAsFixed(1)}kg)';
+    }
     return 'Stable';
   }
 
   // REUSABLE VITAL BOX
-  Widget _buildVitalBox(String title, String value, String status, IconData icon) {
+  Widget _buildVitalBox(
+    String title,
+    String value,
+    String status,
+    IconData icon,
+  ) {
     Color statusColor;
     Color bgColor;
 
-    if (status.contains('Fever') || status.contains('Hypoxia') || status.contains('Hypothermia')) {
+    if (status.contains('Fever') ||
+        status.contains('Abnormal') ||
+        status.contains('Hypothermia')) {
       statusColor = const Color(0xFFEF4444); // Red Warning
       bgColor = const Color(0xFFFEF2F2);
     } else if (status.contains('Dropped')) {
@@ -616,13 +1270,34 @@ class _PatientHealthCard extends StatelessWidget {
             children: [
               Icon(icon, size: 14, color: statusColor.withValues(alpha: 0.7)),
               const SizedBox(width: 6),
-              Text(title, style: TextStyle(fontSize: 11, color: statusColor.withValues(alpha: 0.8), fontWeight: FontWeight.bold)),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: statusColor.withValues(alpha: 0.8),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: statusColor)),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: statusColor,
+            ),
+          ),
           const SizedBox(height: 4),
-          Text(status, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: statusColor)),
+          Text(
+            status,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: statusColor,
+            ),
+          ),
         ],
       ),
     );

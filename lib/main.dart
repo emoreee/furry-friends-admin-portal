@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart'; // Idagdag ang import na ito
-import 'firebase_options.dart'; // Idagdag ito kung nag-generate ka ng options via FlutterFire CLI
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart'; 
 
 import 'package:furry_friends_admin/views/dashboard/dashboard_view.dart';
 import 'package:furry_friends_admin/views/appointments/appointment_view.dart';

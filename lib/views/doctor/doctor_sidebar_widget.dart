@@ -174,7 +174,7 @@ class _DoctorSidebarWidgetState extends State<DoctorSidebarWidget> {
                       activeIcon: Icons.science_rounded,
                       label: 'Lab & Diagnostics',
                       route: '/doctor/lab',
-                      destinationPage: const DoctorLabDiagnosticsScreen(),
+                      destinationPage: const HealthMonitoringView(),
                     ),
 
                     const SizedBox(height: 24),
